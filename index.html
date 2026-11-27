@@ -24,8 +24,28 @@
         </div>
 
         <div class="pill-group">
-          <button class="btn active" id="btnModeGrid" title="Contrast-boosted source pixel grid" data-ui="mode-grid">Pixel Grid</button>
-          <button class="btn" id="btnModeStripes" title="Peek at RGB stripes" data-ui="mode-stripes">Stripes</button>
+          <div class="view-mode-menu" data-ui="view-mode-menu">
+            <button class="btn active view-mode-trigger" id="btnViewMode" type="button"
+                    data-ui="view-mode-trigger" aria-haspopup="menu" aria-expanded="false"
+                    title="Choose Pixel Grid, Stripes, or Squint preview">
+              <span data-ui="view-mode-label">Pixel Grid</span>
+              <span class="view-mode-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="view-mode-dropdown" data-ui="view-mode-dropdown" role="menu" aria-label="View mode">
+              <button class="view-mode-option" type="button" role="menuitemradio"
+                      data-ui="view-mode-option" data-mode="grid" aria-checked="true">
+                <span class="view-mode-check" aria-hidden="true">✓</span><span>Pixel Grid</span>
+              </button>
+              <button class="view-mode-option" type="button" role="menuitemradio"
+                      data-ui="view-mode-option" data-mode="stripes" aria-checked="false">
+                <span class="view-mode-check" aria-hidden="true">✓</span><span>Stripes</span>
+              </button>
+              <button class="view-mode-option" type="button" role="menuitemradio"
+                      data-ui="view-mode-option" data-mode="squint" aria-checked="false">
+                <span class="view-mode-check" aria-hidden="true">✓</span><span>Squint</span>
+              </button>
+            </div>
+          </div>
           <div class="divider"></div>
           <button class="btn" id="btnSettings" title="Grid &amp; contrast settings" data-ui="settings-trigger">Settings</button>
         </div>
@@ -69,6 +89,12 @@
 
       <div class="grid-frame">
         <canvas id="gridCanvas" data-ui="grid-canvas"></canvas>
+      </div>
+
+      <div class="focus-bar" data-ui="focus-bar" hidden>
+        <span class="focus-end">Sharp</span>
+        <input class="focus-input" data-ui="focus-input" type="range" min="0" max="1.5" step="0.05" value="0.75" aria-label="Squint focus">
+        <span class="focus-end">Squint</span>
       </div>
 
       <div class="corner-hint" id="gridMetaHint" data-ui="grid-meta">56 × 42 grid · Click (or drag) cells to mark done / undo · Drop any image</div>

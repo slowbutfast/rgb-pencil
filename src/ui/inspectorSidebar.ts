@@ -8,6 +8,7 @@ import {
   type ShadingStateId,
 } from '../types/pipeline';
 import type { GridStore, GridStoreState } from '../store/gridStore';
+import { selectEffectiveMode } from '../store/gridStore';
 
 function cssRgb([r, g, b]: Rgb): string {
   return `rgb(${r}, ${g}, ${b})`;
@@ -78,6 +79,7 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
 
   function render(state: GridStoreState): void {
     const { grid, hoveredCell } = state;
+    const squinting = selectEffectiveMode(state) === 'squint';
     if (!grid || !hoveredCell) {
       inspected = null;
       setMarkDoneVisible(false);
@@ -125,24 +127,27 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
     subB.textContent = `${stateB.symbol} Blue Stripe`;
 
     const touch = state.lastPointerType === 'touch';
-    hint.textContent = state.readOnly
-      ? 'Viewing only — another tab owns this project'
-      : touch
-        ? done
-          ? 'Press Undo to clear this cell'
-          : 'Press Mark Done to complete'
-        : done
-          ? 'Click cell to undo'
-          : 'Click cell to mark done';
+    hint.textContent = squinting
+      ? 'Squint preview — clicks inspect only'
+      : state.readOnly
+        ? 'Viewing only — another tab owns this project'
+        : touch
+          ? done
+            ? 'Press Undo to clear this cell'
+            : 'Press Mark Done to complete'
+          : done
+            ? 'Click cell to undo'
+            : 'Click cell to mark done';
     delta.textContent = `ΔE ${cell.deltaE.toFixed(1)}`;
 
     setMarkDoneVisible(touch || state.readOnly);
-    markDone.disabled = state.readOnly;
+    markDone.disabled = state.readOnly || squinting;
     markDone.textContent = state.readOnly ? 'Read-only' : done ? 'Undo' : 'Mark Done';
   }
 
   const onMarkDone = (): void => {
     if (!inspected) return;
+    if (selectEffectiveMode(store.getState()) === 'squint') return;
     store.toggleCell(inspected.col, inspected.row);
   };
 

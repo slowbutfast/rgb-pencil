@@ -203,7 +203,21 @@ export interface CellCoord {
   row: number;
 }
 
-export type ViewMode = 'grid' | 'stripes';
+export type ViewMode = 'grid' | 'stripes' | 'squint';
+
+/** Fixed display order of the view-mode dropdown. */
+export const VIEW_MODE_ORDER = ['grid', 'stripes', 'squint'] as const satisfies readonly ViewMode[];
+
+export const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  grid: 'Pixel Grid',
+  stripes: 'Stripes',
+  squint: 'Squint',
+};
+
+/** Focus radius bounds in logical cells. */
+export const MIN_BLUR_CELLS = 0;
+export const MAX_BLUR_CELLS = 1.5;
+export const DEFAULT_BLUR_CELLS = 0.75;
 
 export function cellKey(col: number, row: number): string {
   return `${col},${row}`;
