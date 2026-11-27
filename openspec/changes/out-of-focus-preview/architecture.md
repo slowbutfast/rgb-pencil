@@ -4,7 +4,7 @@
 
 ## Context
 
-This change stacks on top of PR #1 (`design-language-and-ui-ux`, `worker-pipeline-and-pdf-export`, `project-persistence`), at its head `0374420` (PATCH-06 applied; baseline is 18 test files / 220 tests passing as reported by that PR's orchestrator). `MatchedGrid` already embeds `palette: PencilPalette`, `DARK_BORDER_RATIO = 0.15` is exported from `src/types/pipeline.ts`, and `setViewMode` is already permitted in read-only tabs.
+This change builds on top of the merged PR #1 (`design-language-and-ui-ux`, `worker-pipeline-and-pdf-export`, `project-persistence`), whose head `0374420` (PATCH-06 applied) is the same tree as the `master` merge commit `d3e2cc5` (baseline: 18 test files / 220 tests passing as reported by that PR's orchestrator). `MatchedGrid` already embeds `palette: PencilPalette`, `DARK_BORDER_RATIO = 0.15` is exported from `src/types/pipeline.ts`, and `setViewMode` is already permitted in read-only tabs.
 
 Technical requirements driving this architecture:
 - **Linear-light optical accuracy**: Averaging RGB stripes in gamma-encoded sRGB darkens optical mixtures (e.g., `0.5` linear encodes to sRGB `188`, not `127`/`128`). Blurring must execute in linear RGB `[0, 1]` before encoding back to sRGB.
@@ -80,5 +80,5 @@ flowchart TD
 
 ## Migration & Rollback Plan
 
-- Pure additive/UI refactor. Implement on a branch created from `feat/multi-20261126-2351` (`0374420`); open the PR with that branch as its base, then retarget to `master` when PR #1 merges. If PR #1 merges first, rebase onto `master`.
+- Pure additive/UI refactor. Implement on a branch created from `master` (post-PR-#1 merge commit `d3e2cc5`, same tree as `0374420`) and open the PR against `master`. If branching from the pre-merge PR head, rebase onto `master` after the merge.
 - Zero database schema or `.rgbpencil` file format changes; rollback is a single git revert.

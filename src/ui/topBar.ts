@@ -1,6 +1,13 @@
 import { exportGuidePdf, guideFilename } from '../engine/pdfExporter';
 import type { GridStore, GridStoreState } from '../store/gridStore';
-import type { ExportOptions, MatchedGrid, PencilPalette } from '../types/pipeline';
+import {
+  VIEW_MODE_LABELS,
+  VIEW_MODE_ORDER,
+  type ExportOptions,
+  type MatchedGrid,
+  type PencilPalette,
+  type ViewMode,
+} from '../types/pipeline';
 import { readImageFile } from './dropZone';
 
 export interface TopBarDependencies {
@@ -46,8 +53,15 @@ export function mountTopBar(
 ): () => void {
   const progress = element(root, 'progress');
   const reset = element<HTMLButtonElement>(root, 'reset');
-  const modeGrid = element(root, 'mode-grid');
-  const modeStripes = element(root, 'mode-stripes');
+  const viewModeMenu = element<HTMLElement>(root, 'view-mode-menu');
+  const viewModeTrigger = element<HTMLButtonElement>(root, 'view-mode-trigger');
+  const viewModeDropdown = element<HTMLElement>(root, 'view-mode-dropdown');
+  const viewModeLabel = element<HTMLElement>(root, 'view-mode-label');
+  const viewModeOptions = Array.from(
+    root.querySelectorAll<HTMLButtonElement>('[data-ui="view-mode-option"]'),
+  );
+  const focusBar = element<HTMLElement>(root, 'focus-bar');
+  const focusInput = element<HTMLInputElement>(root, 'focus-input');
   const fileInput = element<HTMLInputElement>(root, 'file-input');
   const gridMeta = element(root, 'grid-meta');
 
@@ -228,6 +242,182 @@ export function mountTopBar(
     }
   }
 
+  // --- View-mode dropdown ---------------------------------------------------
+  const hoverQuery =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(hover: hover) and (pointer: fine)')
+      : null;
+  let hoverCapable = hoverQuery?.matches ?? false;
+  let menuOpen = false;
+
+  function setMenuOpen(open: boolean): void {
+    menuOpen = open;
+    viewModeMenu.classList.toggle('open', open);
+    viewModeDropdown.classList.toggle('open', open);
+    viewModeTrigger.setAttribute('aria-expanded', String(open));
+  }
+
+  function optionIndex(element: Element | null): number {
+    return viewModeOptions.indexOf(element as HTMLButtonElement);
+  }
+
+  function focusOption(index: number): void {
+    const count = viewModeOptions.length;
+    if (count === 0) return;
+    viewModeOptions[((index % count) + count) % count]?.focus();
+  }
+
+  const onViewModeTriggerClick = (): void => {
+    if (hoverCapable) {
+      // Hover already drives the open state on desktop; a click must not fight it.
+      if (!menuOpen) setMenuOpen(true);
+      return;
+    }
+    setMenuOpen(!menuOpen);
+  };
+
+  const onViewModeMenuEnter = (): void => {
+    if (hoverCapable) setMenuOpen(true);
+  };
+
+  const onViewModeMenuLeave = (): void => {
+    if (hoverCapable) setMenuOpen(false);
+  };
+
+  const onHoverCapabilityChange = (event: MediaQueryListEvent): void => {
+    hoverCapable = event.matches;
+    if (!hoverCapable) setMenuOpen(false);
+  };
+
+  const onViewModeTriggerKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      setMenuOpen(false);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    setMenuOpen(true);
+    focusOption(event.key === 'ArrowDown' ? 0 : viewModeOptions.length - 1);
+  };
+
+  const onViewModeDropdownKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setMenuOpen(false);
+      viewModeTrigger.focus();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const current = optionIndex(document.activeElement);
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    focusOption(current === -1 ? 0 : current + delta);
+  };
+
+  const onViewModeOptionClick = (event: MouseEvent): void => {
+    const option = event.currentTarget as HTMLButtonElement;
+    const mode = option.dataset.mode as ViewMode | undefined;
+    if (!mode) return;
+    store.setViewMode(mode);
+    setMenuOpen(false);
+    // Mouse users must not leave the trigger focused: Space would activate it.
+    viewModeTrigger.blur();
+  };
+
+  // --- Focus pill -----------------------------------------------------------
+  let pendingBlurFrame: number | null = null;
+  let latestBlurCells = 0;
+
+  const onFocusInput = (): void => {
+    const value = Number(focusInput.value);
+    if (!Number.isFinite(value)) return;
+    latestBlurCells = value;
+    if (pendingBlurFrame !== null) return;
+    pendingBlurFrame = requestAnimationFrame(() => {
+      pendingBlurFrame = null;
+      store.setBlurCells(latestBlurCells);
+    });
+  };
+
+  // --- Hold Space to squint -------------------------------------------------
+  const NON_TEXT_INPUT_TYPES = new Set([
+    'range',
+    'checkbox',
+    'radio',
+    'button',
+    'submit',
+    'reset',
+    'color',
+    'file',
+    'image',
+    'hidden',
+  ]);
+
+  function isTextEntryTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
+    if (target.tagName === 'INPUT') {
+      const type = (target as HTMLInputElement).type;
+      return !NON_TEXT_INPUT_TYPES.has(type);
+    }
+    return false;
+  }
+
+  function isNativeSpaceControl(target: Element | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.tagName === 'BUTTON' || target.tagName === 'SUMMARY') return true;
+    if (target.tagName === 'INPUT') {
+      const type = (target as HTMLInputElement).type;
+      return (
+        type === 'checkbox' ||
+        type === 'radio' ||
+        type === 'button' ||
+        type === 'submit' ||
+        type === 'reset'
+      );
+    }
+    const role = target.getAttribute('role');
+    return role === 'button' || role === 'menuitemradio';
+  }
+
+  function isSpaceKey(event: KeyboardEvent): boolean {
+    return event.code === 'Space' || event.key === ' ';
+  }
+
+  const onSpaceKeyDown = (event: KeyboardEvent): void => {
+    if (!isSpaceKey(event) || event.repeat) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const state = store.getState();
+    if (state.painting || state.viewMode === 'squint') return;
+    if (isTextEntryTarget(event.target)) return;
+    // A keyboard-focused activatable control keeps its native Space activation.
+    if (isNativeSpaceControl(document.activeElement)) return;
+    store.setSquintPeek(true);
+    event.preventDefault();
+  };
+
+  const onSpaceKeyUp = (event: KeyboardEvent): void => {
+    if (!isSpaceKey(event)) return;
+    if (!store.getState().squintPeek) return;
+    store.setSquintPeek(false);
+    event.preventDefault();
+  };
+
+  const releasePeek = (): void => {
+    if (store.getState().squintPeek) store.setSquintPeek(false);
+  };
+
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') releasePeek();
+  };
+
+  const onTopBarPointerClick = (event: MouseEvent): void => {
+    if (event.detail <= 0) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && topBar.contains(active)) active.blur();
+  };
+
   let busy = false;
   let exportError: string | null = null;
   let pipelineDismissed = false;
@@ -261,9 +451,20 @@ export function mountTopBar(
     reset.disabled = state.readOnly;
     reset.title = state.readOnly ? 'Read-only: another tab owns this project' : 'Reset all completed pixels';
 
-    modeGrid.classList.toggle('active', state.viewMode === 'grid');
-    modeStripes.classList.toggle('active', state.viewMode === 'stripes');
+    viewModeLabel.textContent = VIEW_MODE_LABELS[state.viewMode];
+    viewModeOptions.forEach((option, index) => {
+      option.setAttribute('aria-checked', String(VIEW_MODE_ORDER[index] === state.viewMode));
+    });
 
+    const showFocusBar = state.viewMode === 'squint' && !state.squintPeek;
+    focusBar.hidden = !showFocusBar;
+    if (showFocusBar) {
+      focusInput.value = String(state.blurCells);
+      focusInput.setAttribute(
+        'aria-valuetext',
+        `${Number(state.blurCells.toFixed(2))} cells`,
+      );
+    }
     exportButton.disabled = busy || !grid || pending;
     exportButton.textContent = busy ? 'Exporting…' : 'Export PDF';
     exportButton.title = !grid
@@ -307,8 +508,6 @@ export function mountTopBar(
   }
 
   const onReset = (): void => store.resetCompleted();
-  const onModeGrid = (): void => store.setViewMode('grid');
-  const onModeStripes = (): void => store.setViewMode('stripes');
 
   const onUpload = (): void => {
     const file = fileInput.files?.[0];
@@ -351,8 +550,27 @@ export function mountTopBar(
   };
 
   reset.addEventListener('click', onReset);
-  modeGrid.addEventListener('click', onModeGrid);
-  modeStripes.addEventListener('click', onModeStripes);
+  viewModeTrigger.addEventListener('click', onViewModeTriggerClick);
+  viewModeMenu.addEventListener('mouseenter', onViewModeMenuEnter);
+  viewModeMenu.addEventListener('mouseleave', onViewModeMenuLeave);
+  viewModeTrigger.addEventListener('keydown', onViewModeTriggerKeyDown);
+  viewModeDropdown.addEventListener('keydown', onViewModeDropdownKeyDown);
+  viewModeOptions.forEach((option) =>
+    option.addEventListener('click', onViewModeOptionClick),
+  );
+  focusInput.addEventListener('input', onFocusInput);
+  if (hoverQuery) {
+    if (typeof hoverQuery.addEventListener === 'function') {
+      hoverQuery.addEventListener('change', onHoverCapabilityChange);
+    } else if (typeof hoverQuery.addListener === 'function') {
+      hoverQuery.addListener(onHoverCapabilityChange);
+    }
+  }
+  document.addEventListener('keydown', onSpaceKeyDown);
+  document.addEventListener('keyup', onSpaceKeyUp);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('blur', releasePeek);
+  topBar.addEventListener('click', onTopBarPointerClick);
   fileInput.addEventListener('change', onUpload);
   exportButton.addEventListener('click', onExport);
   exportLine.dismiss.addEventListener('click', onDismissError);
@@ -364,8 +582,29 @@ export function mountTopBar(
   return () => {
     unsubscribe();
     reset.removeEventListener('click', onReset);
-    modeGrid.removeEventListener('click', onModeGrid);
-    modeStripes.removeEventListener('click', onModeStripes);
+    viewModeTrigger.removeEventListener('click', onViewModeTriggerClick);
+    viewModeMenu.removeEventListener('mouseenter', onViewModeMenuEnter);
+    viewModeMenu.removeEventListener('mouseleave', onViewModeMenuLeave);
+    viewModeTrigger.removeEventListener('keydown', onViewModeTriggerKeyDown);
+    viewModeDropdown.removeEventListener('keydown', onViewModeDropdownKeyDown);
+    viewModeOptions.forEach((option) =>
+      option.removeEventListener('click', onViewModeOptionClick),
+    );
+    focusInput.removeEventListener('input', onFocusInput);
+    if (hoverQuery) {
+      if (typeof hoverQuery.removeEventListener === 'function') {
+        hoverQuery.removeEventListener('change', onHoverCapabilityChange);
+      } else if (typeof hoverQuery.removeListener === 'function') {
+        hoverQuery.removeListener(onHoverCapabilityChange);
+      }
+    }
+    document.removeEventListener('keydown', onSpaceKeyDown);
+    document.removeEventListener('keyup', onSpaceKeyUp);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('blur', releasePeek);
+    topBar.removeEventListener('click', onTopBarPointerClick);
+    if (pendingBlurFrame !== null) cancelAnimationFrame(pendingBlurFrame);
+    pendingBlurFrame = null;
     fileInput.removeEventListener('change', onUpload);
     exportButton.removeEventListener('click', onExport);
     exportLine.dismiss.removeEventListener('click', onDismissError);

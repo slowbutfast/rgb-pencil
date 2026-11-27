@@ -1,11 +1,14 @@
 import { PIPELINE_VERSION } from '../engine/pipeline';
 import { prepareWorkingBitmap } from '../engine/workingBitmap';
 import {
+  DEFAULT_BLUR_CELLS,
   DEFAULT_EXPORT_OPTIONS,
   DEFAULT_SETTINGS,
+  MAX_BLUR_CELLS,
   MAX_COLS,
   MAX_CONTRAST,
   MAX_TEMPLATE_MM,
+  MIN_BLUR_CELLS,
   MIN_COLS,
   MIN_CONTRAST,
   MIN_TEMPLATE_MM,
@@ -112,6 +115,12 @@ export interface GridStoreState {
   settings: PipelineSettings;
   grid: MatchedGrid | null;
   viewMode: ViewMode;
+  /** Transient Focus-slider radius in logical cells; never persisted. */
+  blurCells: number;
+  /** Transient Spacebar peek; `effectiveMode` prefers it over `viewMode`. */
+  squintPeek: boolean;
+  /** True while a drag-paint gesture is in flight; suppresses the Space peek. */
+  painting: boolean;
   hoveredCell: CellCoord | null;
   completedCells: ReadonlySet<string>;
   status: PipelineStatus;
@@ -160,6 +169,9 @@ export interface GridStore {
   setPalette(palette: PaletteKey): Promise<ActionResult>;
   setDither(dither: boolean, options?: { confirmed?: boolean }): Promise<ActionResult>;
   setViewMode(mode: ViewMode): void;
+  setBlurCells(cells: number): void;
+  setSquintPeek(active: boolean): void;
+  setPainting(active: boolean): void;
   setHovered(cell: CellCoord | null): void;
   setLastPointerType(type: PointerType): void;
   setExportOptions(patch: Partial<ExportOptions>): void;
@@ -223,6 +235,16 @@ function backupMetaKey(projectId: string): string {
   return `backup-suppressed:${projectId}`;
 }
 
+/**
+ * Resolve the mode the canvas should render. A transient Space peek always
+ * wins over `viewMode` without mutating it.
+ */
+export function selectEffectiveMode(
+  state: Pick<GridStoreState, 'viewMode' | 'squintPeek'>,
+): ViewMode {
+  return state.squintPeek ? 'squint' : state.viewMode;
+}
+
 /** Framework-free observable store for grid state, projects, and persistence. */
 export function createGridStore(options: GridStoreOptions): GridStore {
   const client = options.client;
@@ -261,6 +283,9 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     settings: { ...DEFAULT_SETTINGS },
     grid: null,
     viewMode: 'grid',
+    blurCells: DEFAULT_BLUR_CELLS,
+    squintPeek: false,
+    painting: false,
     hoveredCell: null,
     completedCells: new Set<string>(),
     status: 'idle',
@@ -1118,6 +1143,22 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     setViewMode(mode) {
       if (mode === state.viewMode) return;
       commit({ viewMode: mode });
+    },
+
+    setBlurCells(cells) {
+      const next = clamp(cells, MIN_BLUR_CELLS, MAX_BLUR_CELLS);
+      if (next === state.blurCells) return;
+      commit({ blurCells: next });
+    },
+
+    setSquintPeek(active) {
+      if (active === state.squintPeek) return;
+      commit({ squintPeek: active });
+    },
+
+    setPainting(active) {
+      if (active === state.painting) return;
+      commit({ painting: active });
     },
 
     setHovered(cell) {

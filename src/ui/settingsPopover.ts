@@ -207,9 +207,19 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
   let objectUrls: string[] = [];
 
   function setOpen(open: boolean): void {
+    const wasOpen = popover.classList.contains('open');
     popover.classList.toggle('open', open);
     trigger.classList.toggle('active', open);
     trigger.setAttribute('aria-expanded', String(open));
+    // Closing Settings must release focus, otherwise the next Space release
+    // would re-activate the trigger instead of engaging the Squint peek.
+    if (wasOpen && !open) {
+      const active = document.activeElement;
+      if (active === trigger || (active instanceof Node && popover.contains(active))) {
+        if (active instanceof HTMLElement) active.blur();
+        document.body.focus();
+      }
+    }
   }
 
   function showStatus(message: string): void {

@@ -20,7 +20,7 @@ In sharp focus, the `Stripes` view shows individual red, green, and blue columns
 
 ## Impact
 
-- **Stacking Order**: Stacks on the head of PR #1 (`feat/multi-20261126-2351` at `0374420`, PATCH-06 applied, PR still open; carries `design-language-and-ui-ux`, `worker-pipeline-and-pdf-export`, `project-persistence`). Its own PR targets that branch and is retargeted to `master` once PR #1 merges.
+- **Base Order**: PR #1 (`feat/multi-20261126-2351`) was merged at `0374420` before implementation, so this change builds directly on `master` (merge commit `d3e2cc5`, whose tree is identical to `0374420`) and its PR targets `master`.
 - **Modified Files**: `src/types/pipeline.ts`, `src/store/gridStore.ts`, `index.html`, `src/styles/main.css`, `src/ui/topBar.ts`, `src/ui/gridCanvas.ts`, and `src/ui/__tests__/ui.test.ts` (replacing assertions against the removed two-button selectors).
 - **New Files**: `src/engine/opticalBlur.ts` and `src/engine/__tests__/opticalBlur.test.ts`.
 - **Zero Persistence / Worker Impact**: `blurCells` and `squintPeek` are purely visual view state and never mark a project dirty, trigger IndexedDB autosave, or alter `MatchedGrid` / PDF output.

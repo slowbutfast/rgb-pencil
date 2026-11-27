@@ -9,6 +9,25 @@ import {
   type SourceImage,
 } from '../../types/pipeline';
 import { createGridStore, type StorageLike } from '../gridStore';
+import * as gridStoreModule from '../gridStore';
+import type { LockManagerLike } from '../projectLock';
+import { MemoryProjectDatabase, losslessCodec } from './support';
+
+/**
+ * The Squint view state exposes one pure selector instead of duplicating the
+ * `squintPeek ? 'squint' : viewMode` rule in every UI module. The namespace
+ * access keeps this file loadable on the red run, where the selector does not
+ * exist yet, so the failures stay inside the new tests.
+ */
+function effectiveMode(state: { viewMode: string; squintPeek: boolean }): string {
+  const selector = (
+    gridStoreModule as unknown as {
+      selectEffectiveMode?: (value: { viewMode: string; squintPeek: boolean }) => string;
+    }
+  ).selectEffectiveMode;
+  if (!selector) throw new Error('selectEffectiveMode is not exported from gridStore');
+  return selector(state);
+}
 
 function image(width: number, height: number, seed = 0): SourceImage {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -343,5 +362,111 @@ describe('createGridStore', () => {
     });
     store.setExportOptions({ templateCellMm: 1 });
     expect(store.getState().exportOptions.templateCellMm).toBe(4);
+  });
+});
+
+describe('Squint view state', () => {
+  it('starts with a 0.75-cell Focus radius and a non-peeking grid mode', () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    const state = store.getState();
+
+    expect(state.viewMode).toBe('grid');
+    expect(state.blurCells).toBe(0.75);
+    expect(state.squintPeek).toBe(false);
+    expect(state.painting).toBe(false);
+    expect(effectiveMode(state)).toBe('grid');
+  });
+
+  it('accepts Squint, clamps blurCells into 0..1.5, and resolves effectiveMode', () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+
+    store.setViewMode('squint');
+    expect(store.getState().viewMode).toBe('squint');
+    expect(effectiveMode(store.getState())).toBe('squint');
+
+    store.setBlurCells(-2);
+    expect(store.getState().blurCells).toBe(0);
+
+    store.setBlurCells(99);
+    expect(store.getState().blurCells).toBe(1.5);
+
+    store.setBlurCells(0.4);
+    expect(store.getState().blurCells).toBe(0.4);
+  });
+
+  it('keeps squintPeek and painting transient and independent of viewMode', () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+
+    store.setViewMode('stripes');
+    store.setSquintPeek(true);
+    expect(store.getState().viewMode).toBe('stripes');
+    expect(store.getState().squintPeek).toBe(true);
+    expect(effectiveMode(store.getState())).toBe('squint');
+
+    store.setPainting(true);
+    expect(store.getState().painting).toBe(true);
+    expect(effectiveMode(store.getState())).toBe('squint');
+
+    store.setSquintPeek(false);
+    expect(store.getState().squintPeek).toBe(false);
+    expect(effectiveMode(store.getState())).toBe('stripes');
+    expect(store.getState().painting).toBe(true);
+
+    store.setPainting(false);
+    expect(store.getState().painting).toBe(false);
+    expect(store.getState().viewMode).toBe('stripes');
+  });
+
+  it('never dirties or persists the project and still works in a read-only tab', async () => {
+    const denyLocks: LockManagerLike = {
+      async request(_name, _options, callback) {
+        await callback(null);
+        return undefined;
+      },
+    };
+    const db = new MemoryProjectDatabase();
+    const store = createGridStore({
+      client: fakeClient(),
+      db,
+      codec: losslessCodec(),
+      storage: new MemoryStorage(),
+      locks: denyLocks,
+      channel: null,
+      debounceMs: 5,
+    });
+
+    await store.loadImage(image(320, 240));
+    store.toggleCell(0, 0);
+    await store.flushNow();
+    expect(store.getState().readOnly).toBe(true);
+    expect(store.getState().projectId).not.toBeNull();
+
+    const doneBefore = store.getState().completedCells.size;
+    const recordBefore = await db.get(store.getState().projectId!);
+    const put = vi.spyOn(db, 'put');
+    const putWithImage = vi.spyOn(db, 'putWithImage');
+
+    store.setViewMode('squint');
+    store.setBlurCells(1.25);
+    store.setSquintPeek(true);
+    store.setPainting(true);
+    store.setSquintPeek(false);
+    store.setPainting(false);
+    await store.flushNow();
+
+    expect(put).not.toHaveBeenCalled();
+    expect(putWithImage).not.toHaveBeenCalled();
+    expect(store.getState().completedCells.size).toBe(doneBefore);
+    expect(store.getState().blurCells).toBe(1.25);
+    expect(store.getState().viewMode).toBe('squint');
+    expect(store.getState().saveStatus).not.toBe('error');
+
+    const recordAfter = await db.get(store.getState().projectId!);
+    expect(recordAfter.ok && recordAfter.project.doneCount).toBe(doneBefore);
+    if (recordBefore.ok && recordAfter.ok) {
+      expect(recordAfter.project.updatedAt).toBe(recordBefore.project.updatedAt);
+    }
+
+    store.dispose();
   });
 });

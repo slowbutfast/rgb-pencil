@@ -1,8 +1,22 @@
-import { cellKey, type CellCoord, type PointerType, type Rgb } from '../types/pipeline';
-import type { GridStore, GridStoreState } from '../store/gridStore';
+import {
+  buildLinearStripeRaster,
+  blurLinearRasterToSrgb,
+  type LinearRaster,
+} from '../engine/opticalBlur';
+import { selectEffectiveMode, type GridStore, type GridStoreState } from '../store/gridStore';
+import {
+  cellKey,
+  type CellCoord,
+  type MatchedGrid,
+  type PointerType,
+  type Rgb,
+  type ViewMode,
+} from '../types/pipeline';
 
 const AXIS_PAD_LEFT = 34;
 const AXIS_PAD_TOP = 28;
+/** Page background used to pad the blur beyond the grid edges. */
+const PAPER_RGB: Rgb = [250, 250, 250];
 
 interface CanvasTheme {
   axisLabel: string;
@@ -80,6 +94,16 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   let cellSize = 14;
   let cssWidth = 0;
   let cssHeight = 0;
+
+  // Single-entry caches: the linear raster per grid and the blurred canvas per
+  // (grid, blurCells). Completed-cell changes never invalidate either.
+  const rasterCache: { grid: MatchedGrid | null; raster: LinearRaster | null } = {
+    grid: null,
+    raster: null,
+  };
+  const blurCache: { grid: MatchedGrid | null; blurCells: number; canvas: HTMLCanvasElement | null } =
+    { grid: null, blurCells: Number.NaN, canvas: null };
+  let offscreenCanvas: HTMLCanvasElement | null = null;
 
   const requestFrame = (callback: FrameRequestCallback): number =>
     typeof requestAnimationFrame === 'function'
@@ -191,13 +215,20 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     }
   }
 
-  function drawCell(cellIndex: number, rgb: Rgb, x: number, y: number, isDone: boolean): void {
+  function drawCell(
+    mode: ViewMode,
+    cellIndex: number,
+    rgb: Rgb,
+    x: number,
+    y: number,
+    isDone: boolean,
+  ): void {
     if (!ctx) return;
     const px = AXIS_PAD_LEFT + x * cellSize;
     const py = AXIS_PAD_TOP + y * cellSize;
     const grid = state.grid!;
 
-    if (state.viewMode === 'grid') {
+    if (mode === 'grid') {
       ctx.fillStyle = isDone ? desaturate(rgb) : cssRgb(rgb);
       ctx.fillRect(px, py, cellSize, cellSize);
     } else {
@@ -224,18 +255,66 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     }
   }
 
+  function drawSquint(grid: MatchedGrid): void {
+    if (!ctx) return;
+
+    if (rasterCache.grid !== grid || !rasterCache.raster) {
+      rasterCache.grid = grid;
+      rasterCache.raster = buildLinearStripeRaster(grid);
+    }
+
+    const blurCells = state.blurCells;
+    if (
+      blurCache.grid !== grid ||
+      blurCache.blurCells !== blurCells ||
+      !blurCache.canvas
+    ) {
+      const srgb = blurLinearRasterToSrgb(rasterCache.raster, blurCells, PAPER_RGB);
+      if (!offscreenCanvas) offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = srgb.width;
+      offscreenCanvas.height = srgb.height;
+      const offscreenContext = offscreenCanvas.getContext('2d');
+      if (offscreenContext) {
+        // `createImageData` works in jsdom too, unlike relying on the global
+        // `ImageData` constructor.
+        const imageData = offscreenContext.createImageData(srgb.width, srgb.height);
+        imageData.data.set(srgb.data);
+        offscreenContext.putImageData(imageData, 0, 0);
+      }
+      blurCache.grid = grid;
+      blurCache.blurCells = blurCells;
+      blurCache.canvas = offscreenCanvas;
+    }
+
+    ctx.imageSmoothingEnabled = blurCells > 0;
+    ctx.drawImage(
+      blurCache.canvas,
+      AXIS_PAD_LEFT,
+      AXIS_PAD_TOP,
+      grid.cols * cellSize,
+      grid.rows * cellSize,
+    );
+  }
+
   function draw(): void {
     const grid = state.grid;
     if (!ctx || !grid) return;
 
+    const mode = selectEffectiveMode(state);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    if (mode === 'squint') {
+      drawSquint(grid);
+      return;
+    }
+
     drawAxes(grid, state.hoveredCell);
 
     for (let y = 0; y < grid.rows; y += 1) {
       for (let x = 0; x < grid.cols; x += 1) {
         const index = y * grid.cols + x;
         const rgb: Rgb = [grid.target[index * 3]!, grid.target[index * 3 + 1]!, grid.target[index * 3 + 2]!];
-        drawCell(index, rgb, x, y, state.completedCells.has(cellKey(x, y)));
+        drawCell(mode, index, rgb, x, y, state.completedCells.has(cellKey(x, y)));
       }
     }
 
@@ -317,12 +396,13 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     lastPointerType = type;
     store.setLastPointerType(type);
     const hit = cellFromPointer(event);
-    surface.style.cursor = hit ? 'crosshair' : 'default';
+    const mode = selectEffectiveMode(state);
+    surface.style.cursor = hit && mode !== 'squint' ? 'crosshair' : 'default';
     if (!hit) {
       store.setHovered(null);
       return;
     }
-    if (pointerDown && type !== 'touch' && !state.readOnly) {
+    if (pointerDown && type !== 'touch' && !state.readOnly && mode !== 'squint') {
       const key = cellKey(hit.col, hit.row);
       if (state.completedCells.has(key) !== dragPaintDone) {
         store.paintCell(hit.col, hit.row, dragPaintDone);
@@ -338,8 +418,10 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     const hit = cellFromPointer(event);
     if (!hit) return;
 
-    if (type === 'touch' || state.readOnly) {
-      // Touch inspects only; read-only tabs ignore completion entirely.
+    const mode = selectEffectiveMode(state);
+    if (type === 'touch' || state.readOnly || mode === 'squint') {
+      // Touch inspects only; read-only tabs and the Squint preview ignore
+      // completion entirely.
       pointerDown = false;
       store.setHovered(hit);
       return;
@@ -347,12 +429,18 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
 
     pointerDown = true;
     dragPaintDone = !state.completedCells.has(cellKey(hit.col, hit.row));
+    store.setPainting(true);
     store.paintCell(hit.col, hit.row, dragPaintDone);
     store.setHovered(hit);
   }
 
-  function onPointerLeave(event: PointerEvent): void {
+  function endPointerGesture(): void {
     pointerDown = false;
+    if (store.getState().painting) store.setPainting(false);
+  }
+
+  function onPointerLeave(event: PointerEvent): void {
+    endPointerGesture();
     const type = pointerTypeOf(event);
     if (event.pointerType) {
       lastPointerType = type;
@@ -374,7 +462,7 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
       lastPointerType = type;
       store.setLastPointerType(type);
     }
-    pointerDown = false;
+    endPointerGesture();
   }
 
   function onResize(): void {
@@ -385,6 +473,13 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   const unsubscribe = store.subscribe((next) => {
     const previousGrid = state.grid;
     state = next;
+    if (previousGrid !== next.grid) {
+      rasterCache.grid = null;
+      rasterCache.raster = null;
+      blurCache.grid = null;
+      blurCache.blurCells = Number.NaN;
+      blurCache.canvas = null;
+    }
     if (next.grid && (previousGrid !== next.grid || cssWidth === 0)) fit();
     scheduleDraw();
   });
@@ -393,6 +488,7 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   surface.addEventListener('pointerdown', onPointerDown);
   surface.addEventListener('pointerleave', onPointerLeave);
   window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('blur', endPointerGesture);
   window.addEventListener('resize', onResize);
 
   let observer: ResizeObserver | null = null;
@@ -410,9 +506,16 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     surface.removeEventListener('pointerdown', onPointerDown);
     surface.removeEventListener('pointerleave', onPointerLeave);
     window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('blur', endPointerGesture);
     window.removeEventListener('resize', onResize);
     observer?.disconnect();
     if (frame !== null) cancelFrame(frame);
     frame = null;
+    endPointerGesture();
+    rasterCache.grid = null;
+    rasterCache.raster = null;
+    blurCache.grid = null;
+    blurCache.canvas = null;
+    offscreenCanvas = null;
   };
 }
