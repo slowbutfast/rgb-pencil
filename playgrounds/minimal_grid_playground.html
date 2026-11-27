@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGB Pencil Grid — Minimalist Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #fafafa;
+      --ink: #171717;
+      --ink-muted: #737373;
+      --ink-faint: #a3a3a3;
+      --line: #e5e5e5;
+      --line-strong: #d4d4d4;
+      --surface: #ffffff;
+      --sidebar-w: 256px;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Two-column Minimalist Shell: Blank Canvas + Fixed Right Inspector */
+    .shell {
+      display: grid;
+      grid-template-columns: 1fr var(--sidebar-w);
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Left Blank Canvas Stage */
+    .stage {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 64px 24px 36px;
+      overflow: auto;
+      min-width: 0;
+    }
+
+    .stage.dragover::after {
+      content: 'Drop image to load grid';
+      position: absolute;
+      inset: 16px;
+      border: 2px dashed var(--ink);
+      border-radius: 16px;
+      background: rgba(250, 250, 250, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.05rem;
+      font-weight: 500;
+      z-index: 200;
+      pointer-events: none;
+    }
+
+    /* Whisper-Quiet Floating Top Bar (confined to canvas area) */
+    .top-bar {
+      position: absolute;
+      top: 16px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 40;
+    }
+
+    .pill-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 6px;
+      pointer-events: auto;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 6px 11px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .btn:hover { background: #f0f0f0; }
+    .btn.primary { background: var(--ink); color: #ffffff; }
+    .btn.primary:hover { background: #333333; }
+    .btn.active { background: #ececec; font-weight: 600; }
+
+    .divider {
+      width: 1px;
+      height: 15px;
+      background: var(--line);
+      margin: 0 2px;
+    }
+
+    .progress-readout {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--ink-muted);
+      padding: 0 8px;
+    }
+
+    /* Collapsible Settings Popover (anchored to canvas top-right) */
+    .settings-popover {
+      position: absolute;
+      top: 62px;
+      right: 20px;
+      width: 260px;
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.08);
+      z-index: 60;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .settings-popover.open { display: flex; }
+
+    .setting-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .setting-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.76rem;
+      color: var(--ink-muted);
+      font-weight: 500;
+    }
+
+    .setting-head span:last-child {
+      font-family: var(--font-mono);
+      color: var(--ink);
+    }
+
+    .settings-popover input[type="range"] {
+      width: 100%;
+      accent-color: var(--ink);
+      cursor: pointer;
+    }
+
+    .settings-popover select {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      font-family: var(--font-sans);
+      font-size: 0.78rem;
+      color: var(--ink);
+    }
+
+    .toggle-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .toggle-line input { accent-color: var(--ink); cursor: pointer; }
+
+    .sample-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .sample-chip {
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      border-radius: 8px;
+      padding: 5px 4px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+
+    .sample-chip.active, .sample-chip:hover {
+      border-color: var(--ink);
+      color: var(--ink);
+    }
+
+    /* Grid Canvas */
+    .grid-frame {
+      position: relative;
+      display: inline-block;
+      line-height: 0;
+    }
+
+    #gridCanvas {
+      display: block;
+      cursor: crosshair;
+      background: transparent;
+    }
+
+    .corner-hint {
+      position: absolute;
+      bottom: 14px;
+      left: 20px;
+      font-size: 0.72rem;
+      color: var(--ink-faint);
+      pointer-events: none;
+    }
+
+    /* Right Minimalist Inspector Sidebar (Never overlaps grid) */
+    .inspector-sidebar {
+      background: var(--surface);
+      border-left: 1px solid var(--line);
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .sidebar-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-faint);
+    }
+
+    .empty-state {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      padding: 18px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .inspector-active {
+      display: none;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .inspector-active.visible {
+      display: flex;
+    }
+
+    .coord-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .coord-value {
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .status-pill {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #f3f4f6;
+      color: var(--ink-muted);
+    }
+
+    .status-pill.done {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    /* Large Visual 3-Stripe Swatch */
+    .stripe-card {
+      background: #141414;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stripe-preview {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      height: 84px;
+    }
+
+    .stripe-bar {
+      border-radius: 4px;
+      transition: background-color 0.06s linear;
+    }
+
+    .stripe-compare {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: #a3a3a3;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .swatch-pair {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mini-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      display: inline-block;
+    }
+
+    /* 3 Stripe Values List */
+    .stripe-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stripe-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: #fafafa;
+      border: 1px solid var(--line);
+    }
+
+    .ch-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .ch-dot.R { background: #dc2626; }
+    .ch-dot.G { background: #16a34a; }
+    .ch-dot.B { background: #2563eb; }
+
+    .state-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .state-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--ink);
+      line-height: 1.25;
+    }
+
+    .state-sub {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--ink-muted);
+    }
+
+    .meta-footer {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    /* Legend Footer in Sidebar */
+    .sidebar-legend {
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+    }
+
+    .legend-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legend-sym {
+      font-family: var(--font-mono);
+      width: 14px;
+      text-align: center;
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .upload-input { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="shell">
+    <!-- Left Blank Canvas + Centered Grid -->
+    <main class="stage" id="stage">
+      <div class="top-bar">
+        <div class="pill-group">
+          <label class="btn primary" for="fileInput">Upload Image</label>
+          <input id="fileInput" class="upload-input" type="file" accept="image/*">
+          <div class="divider"></div>
+          <span class="progress-readout" id="progressText">0 / 0 done</span>
+          <button class="btn" id="btnClearDone" title="Reset all completed pixels">Reset</button>
+        </div>
+
+        <div class="pill-group">
+          <button class="btn active" id="btnModeGrid" title="Contrast-boosted source pixel grid">Pixel Grid</button>
+          <button class="btn" id="btnModeStripes" title="Peek at RGB stripes">Stripes</button>
+          <div class="divider"></div>
+          <button class="btn" id="btnSettings" title="Grid &amp; contrast settings">Settings</button>
+        </div>
+      </div>
+
+      <!-- Collapsible Settings Popover -->
+      <div class="settings-popover" id="settingsPopover">
+        <div class="setting-row">
+          <div class="setting-head"><span>Sample Scenes</span></div>
+          <div class="sample-row">
+            <button class="sample-chip active" data-scene="tree">Tree</button>
+            <button class="sample-chip" data-scene="sunset">Sunset</button>
+            <button class="sample-chip" data-scene="orbs">Orbs</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Grid Width</span><span id="valCols">56 px</span></div>
+          <input type="range" id="inputCols" min="16" max="96" step="2" value="56">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Contrast Boost</span><span id="valContrast">1.45×</span></div>
+          <input type="range" id="inputContrast" min="1.0" max="2.3" step="0.05" value="1.45">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Pencil Palette</span></div>
+          <select id="inputPalette">
+            <option value="reflective" selected>Reflective Colored Pencils</option>
+            <option value="vibrant">Vibrant Wax Pencils</option>
+            <option value="emissive">Ideal Screen RGB</option>
+          </select>
+        </div>
+
+        <label class="toggle-line">
+          <span>Floyd–Steinberg Dithering</span>
+          <input type="checkbox" id="inputDither" checked>
+        </label>
+      </div>
+
+      <div class="grid-frame">
+        <canvas id="gridCanvas"></canvas>
+      </div>
+
+      <div class="corner-hint" id="gridMetaHint">56 × 42 grid · Click (or drag) cells to mark done / undo · Drop any image</div>
+    </main>
+
+    <!-- Right Minimalist Inspector Sidebar -->
+    <aside class="inspector-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Pixel Inspector</div>
+
+        <div class="empty-state" id="emptyState">
+          Hover over any cell on the grid to inspect its three RGB stripe values without covering the image.
+        </div>
+
+        <div class="inspector-active" id="inspectorActive">
+          <div class="coord-row">
+            <span class="coord-value" id="sideCoord">X1, Y1</span>
+            <span class="status-pill" id="sideStatus">To Do</span>
+          </div>
+
+          <div class="stripe-card">
+            <div class="stripe-preview">
+              <div class="stripe-bar" id="barR"></div>
+              <div class="stripe-bar" id="barG"></div>
+              <div class="stripe-bar" id="barB"></div>
+            </div>
+            <div class="stripe-compare">
+              <span class="swatch-pair">Target <span class="mini-swatch" id="swatchTarget"></span></span>
+              <span class="swatch-pair">Mix <span class="mini-swatch" id="swatchMix"></span></span>
+            </div>
+          </div>
+
+          <div class="stripe-list">
+            <div class="stripe-item">
+              <span class="ch-dot R">R</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblR">Full Color</span>
+                <span class="state-sub" id="subR">● Red Stripe</span>
+              </div>
+            </div>
+            <div class="stripe-item">
+              <span class="ch-dot G">G</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblG">Light Black</span>
+                <span class="state-sub" id="subG">◐ Green Stripe</span>
+              </div>
+            </div>
+            <div class="stripe-item">
+              <span class="ch-dot B">B</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblB">Solid Black</span>
+                <span class="state-sub" id="subB">■ Blue Stripe</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="meta-footer">
+            <span id="sideHint">Click cell to mark done</span>
+            <span id="sideDelta">ΔE 0.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-legend">
+        <div class="sidebar-label" style="margin-bottom: 4px;">5 Shading States</div>
+        <div class="legend-line"><span class="legend-sym">□</span> White Paper (Highlight)</div>
+        <div class="legend-line"><span class="legend-sym">●</span> Full Color</div>
+        <div class="legend-line"><span class="legend-sym">◐</span> Color + Light Black</div>
+        <div class="legend-line"><span class="legend-sym">◑</span> Color + Heavy Black</div>
+        <div class="legend-line"><span class="legend-sym">■</span> Solid Black</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. CONSTANTS & COLOR ENGINE (125-Combo CIELAB + Floyd-Steinberg)
+    // =========================================================================
+    const STATES = [
+      { sym: '□', name: 'White Paper' },
+      { sym: '●', name: 'Full Color' },
+      { sym: '◐', name: 'Light Black' },
+      { sym: '◑', name: 'Heavy Black' },
+      { sym: '■', name: 'Solid Black' }
+    ];
+
+    const PALETTES = {
+      reflective: {
+        border: [24, 24, 26],
+        R: [[244, 241, 234], [198, 46, 42],  [136, 36, 34], [74, 26, 26], [28, 27, 29]],
+        G: [[244, 241, 234], [48, 152, 68],  [36, 104, 48], [26, 58, 34], [28, 27, 29]],
+        B: [[244, 241, 234], [42, 86, 186],  [32, 60, 128], [24, 38, 72], [28, 27, 29]]
+      },
+      vibrant: {
+        border: [18, 18, 20],
+        R: [[250, 248, 242], [232, 38, 36],  [162, 30, 30], [88, 22, 24], [20, 20, 22]],
+        G: [[250, 248, 242], [44, 192, 68],  [32, 130, 48], [22, 70, 32], [20, 20, 22]],
+        B: [[250, 248, 242], [40, 102, 232], [30, 72, 160], [22, 42, 88], [20, 20, 22]]
+      },
+      emissive: {
+        border: [8, 8, 10],
+        R: [[255, 255, 255], [255, 24, 24],  [175, 16, 16], [92, 10, 10], [10, 10, 12]],
+        G: [[255, 255, 255], [24, 255, 42],  [16, 175, 28], [10, 92, 18], [10, 10, 12]],
+        B: [[255, 255, 255], [30, 90, 255],  [20, 62, 175], [12, 34, 92], [10, 10, 12]]
+      }
+    };
+
+    function srgbToLinear(c255) {
+      const c = Math.max(0, Math.min(255, c255)) / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    function linearToSrgb(lin) {
+      const c = Math.max(0, Math.min(1, lin));
+      const s = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+      return Math.round(s * 255);
+    }
+
+    function linearRgbToLab(r, g, b) {
+      const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+      const y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750);
+      const z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) / 1.08883;
+      const f = t => t > 0.008856 ? Math.cbrt(t) : (7.787 * t) + 16 / 116;
+      const fx = f(x), fy = f(y), fz = f(z);
+      return [(116 * fy) - 16, 500 * (fx - fy), 200 * (fy - fz)];
+    }
+
+    function applyContrastSCurve(v255, boost) {
+      if (boost <= 1.01) return v255;
+      const x = v255 / 255;
+      const k = (boost - 1.0) * 5.0 + 1.0;
+      const sig = 1 / (1 + Math.exp(-(x - 0.46) * k * 2.4));
+      const minS = 1 / (1 + Math.exp(0.46 * k * 2.4));
+      const maxS = 1 / (1 + Math.exp(-(1 - 0.46) * k * 2.4));
+      return Math.max(0, Math.min(255, Math.round(((sig - minS) / (maxS - minS)) * 255)));
+    }
+
+    function buildComboLUT(paletteKey, borderRatio = 0.15) {
+      const pal = PALETTES[paletteKey];
+      const bLin = pal.border.map(srgbToLinear);
+      const rLins = pal.R.map(rgb => rgb.map(srgbToLinear));
+      const gLins = pal.G.map(rgb => rgb.map(srgbToLinear));
+      const bLins = pal.B.map(rgb => rgb.map(srgbToLinear));
+      const w = (1 - borderRatio) / 3;
+      const combos = [];
+      for (let ri = 0; ri < 5; ri++) {
+        for (let gi = 0; gi < 5; gi++) {
+          for (let bi = 0; bi < 5; bi++) {
+            const lr = w * (rLins[ri][0] + gLins[gi][0] + bLins[bi][0]) + borderRatio * bLin[0];
+            const lg = w * (rLins[ri][1] + gLins[gi][1] + bLins[bi][1]) + borderRatio * bLin[1];
+            const lb = w * (rLins[ri][2] + gLins[gi][2] + bLins[bi][2]) + borderRatio * bLin[2];
+            combos.push({
+              ri, gi, bi,
+              lin: [lr, lg, lb],
+              srgb: [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)],
+              lab: linearRgbToLab(lr, lg, lb)
+            });
+          }
+        }
+      }
+      return combos;
+    }
+
+    // =========================================================================
+    // 2. SAMPLE SCENES
+    // =========================================================================
+    function generateSceneCanvas(name) {
+      const c = document.createElement('canvas');
+      c.width = 320; c.height = 240;
+      const ctx = c.getContext('2d');
+      if (name === 'tree') {
+        const bg = ctx.createRadialGradient(160, 120, 20, 160, 120, 210);
+        bg.addColorStop(0, '#121a24'); bg.addColorStop(1, '#050608');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, 320, 240);
+        ctx.fillStyle = '#7c4a26'; ctx.fillRect(142, 184, 36, 44);
+        [
+          { yTop: 28, yBot: 105, hw: 66, col: '#22c55e' },
+          { yTop: 74, yBot: 152, hw: 92, col: '#16a34a' },
+          { yTop: 120, yBot: 196, hw: 118, col: '#15803d' }
+        ].forEach(t => {
+          ctx.beginPath(); ctx.moveTo(160, t.yTop); ctx.lineTo(160 - t.hw, t.yBot); ctx.lineTo(160 + t.hw, t.yBot);
+          ctx.closePath(); ctx.fillStyle = t.col; ctx.fill();
+        });
+        const glow = (x, y, r, inner) => {
+          const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+          g.addColorStop(0, '#fff'); g.addColorStop(0.35, inner); g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        };
+        glow(160, 28, 28, '#fde047');
+        [[135,84,'#facc15'],[184,92,'#ef4444'],[156,118,'#38bdf8'],[116,138,'#ef4444'],
+         [200,142,'#facc15'],[146,164,'#facc15'],[184,174,'#38bdf8'],[98,180,'#fde047'],[222,180,'#ef4444']]
+         .forEach(([x,y,col]) => glow(x, y, 17, col));
+      } else if (name === 'sunset') {
+        const sky = ctx.createLinearGradient(0, 0, 0, 165);
+        sky.addColorStop(0, '#0f0c29'); sky.addColorStop(0.45, '#6b21a8');
+        sky.addColorStop(0.8, '#ec4899'); sky.addColorStop(1, '#fb923c');
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, 320, 165);
+        const sun = ctx.createLinearGradient(0, 50, 0, 155);
+        sun.addColorStop(0, '#fef08a'); sun.addColorStop(0.6, '#fb923c'); sun.addColorStop(1, '#f43f5e');
+        ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(160, 118, 56, 0, Math.PI * 2); ctx.fill();
+        const sea = ctx.createLinearGradient(0, 165, 0, 240);
+        sea.addColorStop(0, '#1e1b4b'); sea.addColorStop(1, '#09090b');
+        ctx.fillStyle = sea; ctx.fillRect(0, 165, 320, 75);
+        ctx.fillStyle = 'rgba(251,146,60,0.75)'; ctx.fillRect(118, 170, 84, 8);
+        ctx.fillStyle = 'rgba(244,63,94,0.55)'; ctx.fillRect(130, 186, 60, 8);
+      } else {
+        ctx.fillStyle = '#07080a'; ctx.fillRect(0, 0, 320, 240);
+        ctx.globalCompositeOperation = 'lighter';
+        [[125,102,'#ff2a2a'],[195,102,'#22e544'],[160,156,'#2e74ff']].forEach(([x,y,col]) => {
+          const g = ctx.createRadialGradient(x, y, 8, x, y, 78);
+          g.addColorStop(0, col); g.addColorStop(0.7, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 78, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      return c;
+    }
+
+    // =========================================================================
+    // 3. STATE & PIPELINE (4x denser default: 56 x 42)
+    // =========================================================================
+    const state = {
+      sourceImage: null,
+      cols: 56,
+      rows: 42,
+      contrastBoost: 1.45,
+      palette: 'reflective',
+      dither: true,
+      viewMode: 'grid',
+      grid: [],
+      completed: new Set(),
+      hovered: null,
+      axisPadLeft: 34,
+      axisPadTop: 28,
+      cellSize: 14,
+      isPointerDown: false,
+      dragPaintMode: true
+    };
+
+    const canvas = document.getElementById('gridCanvas');
+    const ctx = canvas.getContext('2d');
+    const stage = document.getElementById('stage');
+
+    function computeGrid() {
+      const src = state.sourceImage;
+      if (!src) return;
+      const cols = state.cols;
+      const aspect = (src.height || 240) / (src.width || 320);
+      const rows = Math.max(8, Math.round(cols * aspect));
+      state.rows = rows;
+
+      const tmp = document.createElement('canvas');
+      tmp.width = cols; tmp.height = rows;
+      const tctx = tmp.getContext('2d');
+      tctx.imageSmoothingEnabled = true;
+      tctx.imageSmoothingQuality = 'high';
+      tctx.drawImage(src, 0, 0, cols, rows);
+      const px = tctx.getImageData(0, 0, cols, rows).data;
+
+      const linBuf = new Float32Array(cols * rows * 3);
+      const boosted = new Array(cols * rows);
+      for (let i = 0; i < cols * rows; i++) {
+        const r = applyContrastSCurve(px[i * 4], state.contrastBoost);
+        const g = applyContrastSCurve(px[i * 4 + 1], state.contrastBoost);
+        const b = applyContrastSCurve(px[i * 4 + 2], state.contrastBoost);
+        boosted[i] = [r, g, b];
+        linBuf[i * 3] = srgbToLinear(r);
+        linBuf[i * 3 + 1] = srgbToLinear(g);
+        linBuf[i * 3 + 2] = srgbToLinear(b);
+      }
+
+      const combos = buildComboLUT(state.palette, 0.15);
+      const grid = Array.from({ length: rows }, () => new Array(cols));
+      const ditherScale = state.dither ? 0.85 : 0;
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const i = y * cols + x;
+          const tr = Math.max(0, Math.min(1, linBuf[i * 3]));
+          const tg = Math.max(0, Math.min(1, linBuf[i * 3 + 1]));
+          const tb = Math.max(0, Math.min(1, linBuf[i * 3 + 2]));
+          const [tL, ta, tbLab] = linearRgbToLab(tr, tg, tb);
+
+          let best = combos[0];
+          let bestDistSq = Infinity;
+          for (let c = 0; c < 125; c++) {
+            const cand = combos[c];
+            const dL = tL - cand.lab[0];
+            const da = ta - cand.lab[1];
+            const db = tbLab - cand.lab[2];
+            const d2 = dL * dL + da * da + db * db;
+            if (d2 < bestDistSq) { bestDistSq = d2; best = cand; }
+          }
+
+          grid[y][x] = { rgb: boosted[i], combo: best, deltaE: Math.sqrt(bestDistSq) };
+
+          if (ditherScale > 0) {
+            const er = (tr - best.lin[0]) * ditherScale;
+            const eg = (tg - best.lin[1]) * ditherScale;
+            const eb = (tb - best.lin[2]) * ditherScale;
+            const spread = (nx, ny, w) => {
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                const ni = (ny * cols + nx) * 3;
+                linBuf[ni] += er * w; linBuf[ni + 1] += eg * w; linBuf[ni + 2] += eb * w;
+              }
+            };
+            spread(x + 1, y, 7 / 16);
+            spread(x - 1, y + 1, 3 / 16);
+            spread(x, y + 1, 5 / 16);
+            spread(x + 1, y + 1, 1 / 16);
+          }
+        }
+      }
+
+      state.grid = grid;
+      for (const key of state.completed) {
+        const [cx, cy] = key.split(',').map(Number);
+        if (cx >= cols || cy >= rows) state.completed.delete(key);
+      }
+
+      document.getElementById('gridMetaHint').textContent =
+        `${cols} × ${rows} grid (${(cols * rows * 3).toLocaleString()} stripes) · Click (or drag) cells to mark done / undo · Drop any image`;
+      updateProgress();
+      resizeAndDraw();
+    }
+
+    function updateProgress() {
+      const total = state.cols * state.rows;
+      document.getElementById('progressText').textContent = `${state.completed.size} / ${total} done`;
+    }
+
+    function desaturateRgb([r, g, b]) {
+      const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      const gray = Math.round(lum * 0.42 + 132);
+      return `rgb(${gray}, ${gray}, ${gray})`;
+    }
+
+    function resizeAndDraw() {
+      const stageRect = stage.getBoundingClientRect();
+      const maxW = Math.max(280, stageRect.width - 72);
+      const maxH = Math.max(240, stageRect.height - 124);
+      const cellW = Math.floor((maxW - state.axisPadLeft) / state.cols);
+      const cellH = Math.floor((maxH - state.axisPadTop) / state.rows);
+      state.cellSize = Math.max(7, Math.min(28, cellW, cellH));
+
+      const cssW = state.axisPadLeft + state.cols * state.cellSize + 2;
+      const cssH = state.axisPadTop + state.rows * state.cellSize + 2;
+      const dpr = window.devicePixelRatio || 1;
+
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      drawGrid();
+    }
+
+    function drawGrid() {
+      const { cols, rows, cellSize, axisPadLeft, axisPadTop, hovered, completed, viewMode } = state;
+      const pal = PALETTES[state.palette];
+      const cssW = axisPadLeft + cols * cellSize + 2;
+      const cssH = axisPadTop + rows * cellSize + 2;
+
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      // 1. Axis labels (adaptive step for dense grids, always highlight hovered X/Y)
+      const labelStep = cellSize < 12 ? 5 : cellSize < 18 ? 2 : 1;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for (let x = 0; x < cols; x++) {
+        const isHov = hovered && hovered.col === x;
+        const cx = axisPadLeft + x * cellSize + cellSize / 2;
+        const isMajor = (x + 1) % labelStep === 0 || x === 0;
+        if (isHov || isMajor) {
+          // Avoid overlapping hovered label with adjacent major label
+          if (!isHov && hovered && Math.abs(hovered.col - x) <= 1 && cellSize < 14) continue;
+          ctx.fillStyle = isHov ? '#171717' : '#a3a3a3';
+          ctx.font = isHov ? '700 10px "JetBrains Mono", monospace' : '500 9px "JetBrains Mono", monospace';
+          ctx.fillText(String(x + 1), cx, axisPadTop - 12);
+        }
+        ctx.strokeStyle = isHov ? '#171717' : (isMajor ? '#c4c4c4' : '#e5e5e5');
+        ctx.lineWidth = isHov ? 1.5 : 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, axisPadTop - (isMajor || isHov ? 5 : 3));
+        ctx.lineTo(cx, axisPadTop);
+        ctx.stroke();
+      }
+
+      ctx.textAlign = 'right';
+      for (let y = 0; y < rows; y++) {
+        const isHov = hovered && hovered.row === y;
+        const cy = axisPadTop + y * cellSize + cellSize / 2;
+        const isMajor = (y + 1) % labelStep === 0 || y === 0;
+        if (isHov || isMajor) {
+          if (!isHov && hovered && Math.abs(hovered.row - y) <= 1 && cellSize < 14) continue;
+          ctx.fillStyle = isHov ? '#171717' : '#a3a3a3';
+          ctx.font = isHov ? '700 10px "JetBrains Mono", monospace' : '500 9px "JetBrains Mono", monospace';
+          ctx.fillText(String(y + 1), axisPadLeft - 9, cy);
+        }
+        ctx.strokeStyle = isHov ? '#171717' : (isMajor ? '#c4c4c4' : '#e5e5e5');
+        ctx.lineWidth = isHov ? 1.5 : 1;
+        ctx.beginPath();
+        ctx.moveTo(axisPadLeft - (isMajor || isHov ? 5 : 3), cy);
+        ctx.lineTo(axisPadLeft, cy);
+        ctx.stroke();
+      }
+
+      // 2. Pixel cells
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = state.grid[y][x];
+          const px = axisPadLeft + x * cellSize;
+          const py = axisPadTop + y * cellSize;
+          const isDone = completed.has(`${x},${y}`);
+
+          if (viewMode === 'grid') {
+            ctx.fillStyle = isDone ? desaturateRgb(cell.rgb) : `rgb(${cell.rgb[0]}, ${cell.rgb[1]}, ${cell.rgb[2]})`;
+            ctx.fillRect(px, py, cellSize, cellSize);
+          } else {
+            const sw = cellSize / 3;
+            const { ri, gi, bi } = cell.combo;
+            ctx.fillStyle = isDone ? desaturateRgb(pal.R[ri]) : `rgb(${pal.R[ri].join(',')})`;
+            ctx.fillRect(px, py, sw, cellSize);
+            ctx.fillStyle = isDone ? desaturateRgb(pal.G[gi]) : `rgb(${pal.G[gi].join(',')})`;
+            ctx.fillRect(px + sw, py, sw, cellSize);
+            ctx.fillStyle = isDone ? desaturateRgb(pal.B[bi]) : `rgb(${pal.B[bi].join(',')})`;
+            ctx.fillRect(px + sw * 2, py, cellSize - sw * 2, cellSize);
+          }
+
+          if (isDone) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px + 1.5, py + cellSize - 1.5);
+            ctx.lineTo(px + cellSize - 1.5, py + 1.5);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // 3. Crisp Grid Lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= cols; x++) {
+        const gx = axisPadLeft + x * cellSize + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(gx, axisPadTop);
+        ctx.lineTo(gx, axisPadTop + rows * cellSize);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= rows; y++) {
+        const gy = axisPadTop + y * cellSize + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(axisPadLeft, gy);
+        ctx.lineTo(axisPadLeft + cols * cellSize, gy);
+        ctx.stroke();
+      }
+
+      // Major 5-cell reference lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 1;
+      for (let x = 5; x < cols; x += 5) {
+        const gx = axisPadLeft + x * cellSize + 0.5;
+        ctx.beginPath(); ctx.moveTo(gx, axisPadTop); ctx.lineTo(gx, axisPadTop + rows * cellSize); ctx.stroke();
+      }
+      for (let y = 5; y < rows; y += 5) {
+        const gy = axisPadTop + y * cellSize + 0.5;
+        ctx.beginPath(); ctx.moveTo(axisPadLeft, gy); ctx.lineTo(axisPadLeft + cols * cellSize, gy); ctx.stroke();
+      }
+
+      // Outer border
+      ctx.strokeStyle = '#171717';
+      ctx.lineWidth = 1.25;
+      ctx.strokeRect(axisPadLeft + 0.5, axisPadTop + 0.5, cols * cellSize, rows * cellSize);
+
+      // 4. Active Hover Cell Ring
+      if (hovered) {
+        const hx = axisPadLeft + hovered.col * cellSize;
+        const hy = axisPadTop + hovered.row * cellSize;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(hx + 0.5, hy + 0.5, cellSize - 1, cellSize - 1);
+        ctx.strokeStyle = '#171717';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(hx - 0.5, hy - 0.5, cellSize + 1, cellSize + 1);
+      }
+    }
+
+    // =========================================================================
+    // 4. RIGHT SIDEBAR INSPECTOR & CLICK-TO-COMPLETE / UNDO
+    // =========================================================================
+    function getCellFromPointer(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left - state.axisPadLeft;
+      const y = e.clientY - rect.top - state.axisPadTop;
+      const col = Math.floor(x / state.cellSize);
+      const row = Math.floor(y / state.cellSize);
+      if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) return null;
+      return { col, row };
+    }
+
+    function updateSidebarForCell(col, row) {
+      const cell = state.grid[row][col];
+      const pal = PALETTES[state.palette];
+      const { ri, gi, bi, srgb } = cell.combo;
+      const isDone = state.completed.has(`${col},${row}`);
+
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('inspectorActive').classList.add('visible');
+
+      document.getElementById('sideCoord').textContent = `X${col + 1}, Y${row + 1}`;
+      const statusEl = document.getElementById('sideStatus');
+      statusEl.textContent = isDone ? 'Completed' : 'To Do';
+      statusEl.className = isDone ? 'status-pill done' : 'status-pill';
+
+      document.getElementById('barR').style.background = `rgb(${pal.R[ri].join(',')})`;
+      document.getElementById('barG').style.background = `rgb(${pal.G[gi].join(',')})`;
+      document.getElementById('barB').style.background = `rgb(${pal.B[bi].join(',')})`;
+
+      document.getElementById('swatchTarget').style.background = `rgb(${cell.rgb.join(',')})`;
+      document.getElementById('swatchMix').style.background = `rgb(${srgb.join(',')})`;
+
+      document.getElementById('lblR').textContent = STATES[ri].name;
+      document.getElementById('subR').textContent = `${STATES[ri].sym} Red Stripe`;
+      document.getElementById('lblG').textContent = STATES[gi].name;
+      document.getElementById('subG').textContent = `${STATES[gi].sym} Green Stripe`;
+      document.getElementById('lblB').textContent = STATES[bi].name;
+      document.getElementById('subB').textContent = `${STATES[bi].sym} Blue Stripe`;
+
+      document.getElementById('sideHint').textContent = isDone ? 'Click cell to undo' : 'Click cell to mark done';
+      document.getElementById('sideDelta').textContent = `ΔE ${cell.deltaE.toFixed(1)}`;
+    }
+
+    canvas.addEventListener('pointermove', e => {
+      const hit = getCellFromPointer(e);
+      canvas.style.cursor = hit ? 'crosshair' : 'default';
+      if (!hit) {
+        if (state.hovered) {
+          state.hovered = null;
+          drawGrid();
+        }
+        return;
+      }
+
+      const changed = !state.hovered || state.hovered.col !== hit.col || state.hovered.row !== hit.row;
+      state.hovered = hit;
+
+      if (state.isPointerDown && changed) {
+        const key = `${hit.col},${hit.row}`;
+        if (state.dragPaintMode) state.completed.add(key);
+        else state.completed.delete(key);
+        updateProgress();
+      }
+
+      if (changed) {
+        drawGrid();
+        updateSidebarForCell(hit.col, hit.row);
+      }
+    });
+
+    canvas.addEventListener('pointerleave', () => {
+      state.hovered = null;
+      state.isPointerDown = false;
+      drawGrid();
+    });
+
+    canvas.addEventListener('pointerdown', e => {
+      const hit = getCellFromPointer(e);
+      if (!hit) return;
+      state.isPointerDown = true;
+      const key = `${hit.col},${hit.row}`;
+      const willMarkDone = !state.completed.has(key);
+      state.dragPaintMode = willMarkDone;
+      if (willMarkDone) state.completed.add(key);
+      else state.completed.delete(key);
+      updateProgress();
+      drawGrid();
+      updateSidebarForCell(hit.col, hit.row);
+    });
+
+    window.addEventListener('pointerup', () => {
+      state.isPointerDown = false;
+    });
+
+    // =========================================================================
+    // 5. MINIMAL CONTROLS & IMAGE UPLOAD
+    // =========================================================================
+    const fileInput = document.getElementById('fileInput');
+
+    function loadFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('active'));
+          state.sourceImage = img;
+          state.completed.clear();
+          computeGrid();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+    stage.addEventListener('dragover', e => { e.preventDefault(); stage.classList.add('dragover'); });
+    stage.addEventListener('dragleave', () => stage.classList.remove('dragover'));
+    stage.addEventListener('drop', e => {
+      e.preventDefault();
+      stage.classList.remove('dragover');
+      loadFile(e.dataTransfer.files[0]);
+    });
+
+    const btnModeGrid = document.getElementById('btnModeGrid');
+    const btnModeStripes = document.getElementById('btnModeStripes');
+    btnModeGrid.addEventListener('click', () => {
+      state.viewMode = 'grid';
+      btnModeGrid.classList.add('active');
+      btnModeStripes.classList.remove('active');
+      drawGrid();
+    });
+    btnModeStripes.addEventListener('click', () => {
+      state.viewMode = 'stripes';
+      btnModeStripes.classList.add('active');
+      btnModeGrid.classList.remove('active');
+      drawGrid();
+    });
+
+    document.getElementById('btnClearDone').addEventListener('click', () => {
+      state.completed.clear();
+      updateProgress();
+      drawGrid();
+      if (state.hovered) updateSidebarForCell(state.hovered.col, state.hovered.row);
+    });
+
+    const btnSettings = document.getElementById('btnSettings');
+    const popover = document.getElementById('settingsPopover');
+    btnSettings.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = popover.classList.toggle('open');
+      btnSettings.classList.toggle('active', open);
+    });
+    document.addEventListener('click', e => {
+      if (!popover.contains(e.target) && e.target !== btnSettings) {
+        popover.classList.remove('open');
+        btnSettings.classList.remove('active');
+      }
+    });
+
+    document.querySelectorAll('.sample-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        state.sourceImage = generateSceneCanvas(chip.dataset.scene);
+        state.completed.clear();
+        computeGrid();
+      });
+    });
+
+    document.getElementById('inputCols').addEventListener('input', e => {
+      state.cols = Number(e.target.value);
+      document.getElementById('valCols').textContent = `${state.cols} px`;
+      computeGrid();
+    });
+    document.getElementById('inputContrast').addEventListener('input', e => {
+      state.contrastBoost = Number(e.target.value);
+      document.getElementById('valContrast').textContent = `${state.contrastBoost.toFixed(2)}×`;
+      computeGrid();
+    });
+    document.getElementById('inputPalette').addEventListener('change', e => {
+      state.palette = e.target.value;
+      computeGrid();
+    });
+    document.getElementById('inputDither').addEventListener('change', e => {
+      state.dither = e.target.checked;
+      computeGrid();
+    });
+
+    window.addEventListener('resize', resizeAndDraw);
+
+    // Boot
+    state.sourceImage = generateSceneCanvas('tree');
+    computeGrid();
+  </script>
+</body>
+</html>

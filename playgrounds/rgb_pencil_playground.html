@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGB Pencil Optical Mixing — Visual Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4e635a;
+      --on-primary: #ffffff;
+      --primary-container: #d1e8dd;
+      --on-primary-container: #0b1f18;
+      --secondary: #845241;
+      --surface: #fbf9f5;
+      --surface-container-lowest: #ffffff;
+      --surface-container-low: #f5f3ef;
+      --surface-container-high: #eae8e4;
+      --surface-container-highest: #e4e2de;
+      --on-surface: #1b1c1a;
+      --on-surface-variant: #424845;
+      --inverse-surface: #181a19;
+      --inverse-on-surface: #f2f0ed;
+      --outline: #727875;
+      --outline-variant: #c2c8c4;
+      --warn-bg: #fff3d6;
+      --warn-text: #7a4f01;
+      --warn-border: #e6c278;
+      --danger-bg: #fde8e8;
+      --danger-text: #9b1c1c;
+      --danger-border: #f8b4b4;
+
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+      --radius-sm: 0.35rem;
+      --radius-md: 0.6rem;
+      --radius-lg: 0.85rem;
+      --radius-xl: 1.15rem;
+      --radius-2xl: 1.5rem;
+      --radius-full: 9999px;
+
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 20px;
+      --space-lg: 28px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background-color: var(--surface-container-low);
+      color: var(--on-surface);
+      font-family: var(--font-body);
+      line-height: 1.5;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Header */
+    .showcase-header {
+      background-color: var(--surface);
+      border-bottom: 1px solid var(--outline-variant);
+      padding: 24px 32px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .header-left h1 {
+      font-family: var(--font-display);
+      font-size: 1.9rem;
+      margin: 0 0 4px;
+      color: var(--primary);
+      letter-spacing: -0.01em;
+    }
+
+    .header-left p {
+      font-size: 0.95rem;
+      color: var(--on-surface-variant);
+      margin: 0;
+      max-width: 720px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-nav-home {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 8px 14px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--outline-variant);
+      background: var(--surface-container-lowest);
+      transition: all 0.2s ease;
+    }
+
+    .btn-nav-home:hover {
+      border-color: var(--primary);
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+    }
+
+    /* Main Workspace Layout */
+    .workspace {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 24px;
+      padding: 24px 32px 48px;
+      max-width: 1680px;
+      margin: 0 auto;
+      align-items: start;
+    }
+
+    @media (max-width: 1080px) {
+      .workspace {
+        grid-template-columns: 1fr;
+        padding: 16px;
+      }
+    }
+
+    /* Sidebar Controls */
+    .controls-panel {
+      background: var(--surface-container-lowest);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-2xl);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.04);
+      position: sticky;
+      top: 16px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+    }
+
+    @media (max-width: 1080px) {
+      .controls-panel {
+        position: static;
+        max-height: none;
+      }
+    }
+
+    .control-section {
+      border-bottom: 1px solid var(--surface-container-high);
+      padding-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .control-section:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .scene-pills {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .pill-btn {
+      background: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-md);
+      padding: 8px 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+    }
+
+    .pill-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .pill-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--on-primary);
+    }
+
+    .upload-dropzone {
+      border: 1.5px dashed var(--outline);
+      border-radius: var(--radius-lg);
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--on-surface-variant);
+      cursor: pointer;
+      background: var(--surface);
+      transition: all 0.2s ease;
+    }
+
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+      border-color: var(--primary);
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+    }
+
+    .field-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-row-inline {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--on-surface);
+    }
+
+    .field-value {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      padding: 7px 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--outline-variant);
+      background: var(--surface);
+      color: var(--on-surface);
+      font-family: var(--font-body);
+      font-size: 0.84rem;
+    }
+
+    input[type="range"] {
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.84rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    /* Effort Warning Banner */
+    .effort-banner {
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      border: 1px solid var(--outline-variant);
+      background: var(--surface-container-low);
+      color: var(--on-surface-variant);
+    }
+
+    .effort-banner.warn {
+      background: var(--warn-bg);
+      border-color: var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .effort-banner.danger {
+      background: var(--danger-bg);
+      border-color: var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    /* Swatch Strip */
+    .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+    }
+
+    .swatch-cell {
+      height: 20px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      position: relative;
+    }
+
+    .swatch-row-label {
+      font-size: 0.72rem;
+      color: var(--outline);
+      margin-bottom: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Main Content Area */
+    .main-stage {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    /* Metrics Bar */
+    .metrics-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      background: var(--surface-container-lowest);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 12px 16px;
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--outline);
+      font-weight: 600;
+    }
+
+    .metric-val {
+      font-family: var(--font-mono);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--on-surface);
+      margin-top: 2px;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
+      color: var(--on-surface-variant);
+    }
+
+    /* Viewport Comparison Cards */
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    @media (max-width: 1320px) {
+      .preview-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .preview-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .viewport-frame {
+      background: var(--surface-container-lowest);
+      border-radius: var(--radius-2xl);
+      border: 1px solid var(--outline-variant);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .viewport-meta {
+      background: var(--surface);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--outline-variant);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .viewport-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--primary);
+      margin: 0;
+    }
+
+    .viewport-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+      font-weight: 600;
+    }
+
+    .viewport-canvas-wrap {
+      background: #111312;
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 290px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .viewport-canvas-wrap canvas {
+      max-width: 100%;
+      max-height: 360px;
+      width: auto;
+      height: auto;
+      border-radius: 4px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+      image-rendering: pixelated;
+    }
+
+    .viewport-canvas-wrap.distance-wrap canvas {
+      image-rendering: auto;
+    }
+
+    .viewport-footer {
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      color: var(--on-surface-variant);
+      background: var(--surface);
+      border-top: 1px solid var(--outline-variant);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Pixel Inspector Bar */
+    .inspector-card {
+      background: var(--inverse-surface);
+      color: var(--inverse-on-surface);
+      border-radius: var(--radius-xl);
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 0.85rem;
+    }
+
+    .inspector-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .color-chip {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .stripe-mini {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      background: #0b0c0c;
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .stripe-mini span {
+      width: 10px;
+      height: 22px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .mono-pill {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    /* Guide & Exporter Tabs */
+    .panel-card {
+      background: var(--surface-container-lowest);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-2xl);
+      overflow: hidden;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.03);
+    }
+
+    .tab-bar {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--outline-variant);
+      padding: 0 16px;
+      gap: 6px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2.5px solid transparent;
+      padding: 14px 16px;
+      font-family: var(--font-body);
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover { color: var(--primary); }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-content {
+      display: none;
+      padding: 20px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Cross-stitch Chart Preview */
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      background: var(--surface-container-low);
+      border-radius: var(--radius-lg);
+      font-size: 0.82rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+    }
+
+    .legend-sym {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      background: var(--surface-container-lowest);
+      border: 1px solid var(--outline-variant);
+    }
+
+    .chart-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-lg);
+      background: #fff;
+    }
+
+    .chart-table {
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      width: max-content;
+    }
+
+    .chart-table th, .chart-table td {
+      border: 1px solid #e5e7eb;
+      width: 22px;
+      height: 22px;
+      text-align: center;
+      padding: 0;
+    }
+
+    .chart-table th {
+      background: var(--surface-container-low);
+      color: var(--on-surface-variant);
+      font-weight: 600;
+      font-size: 10px;
+    }
+
+    .chart-table td.col-r { background: rgba(239, 68, 68, 0.08); }
+    .chart-table td.col-g { background: rgba(34, 197, 94, 0.08); }
+    .chart-table td.col-b { background: rgba(59, 130, 246, 0.08); border-right: 2px solid #9ca3af; }
+
+    /* Column-by-Column RLE Instructions */
+    .rle-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .rle-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 10px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .rle-card {
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-lg);
+      padding: 10px 12px;
+      background: var(--surface);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .rle-card:hover {
+      border-color: var(--primary);
+    }
+
+    .rle-card.done {
+      opacity: 0.55;
+      background: var(--surface-container-high);
+      text-decoration: line-through;
+    }
+
+    .rle-col-tag {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.78rem;
+      padding: 3px 7px;
+      border-radius: 6px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .rle-col-tag.R { background: #c53030; }
+    .rle-col-tag.G { background: #2f855a; }
+    .rle-col-tag.B { background: #2b6cb0; }
+
+    .rle-runs {
+      font-size: 0.8rem;
+      color: var(--on-surface);
+      line-height: 1.45;
+    }
+
+    /* Code Snippet Exporter */
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .btn-copy {
+      background: var(--primary);
+      color: var(--on-primary);
+      border: none;
+      padding: 7px 14px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-copy:hover {
+      background: var(--secondary);
+    }
+
+    pre.config-code {
+      background: var(--inverse-surface);
+      color: #e6f4ea;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      overflow-x: auto;
+      margin: 0;
+      max-height: 340px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--inverse-surface);
+      color: var(--inverse-on-surface);
+      padding: 10px 16px;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      z-index: 10000;
+      transform: translateY(80px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="showcase-header">
+    <div class="header-left">
+      <h1>RGB Pencil Optical Mixing Playground</h1>
+      <p>Playtest the 5-state RGB subpixel matcher (125 combos via CIELAB ΔE), Floyd–Steinberg dithering, contrast boost, reflective pencil calibration presets, and viewing-distance optical blur.</p>
+    </div>
+    <div class="header-actions">
+      <a href="../index.html" class="btn-nav-home">&larr; Back to App</a>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- Left Controls Panel -->
+    <aside class="controls-panel">
+      <!-- 1. Source Scene -->
+      <div class="control-section">
+        <div class="section-label">1. Source Image</div>
+        <div class="scene-pills">
+          <button class="pill-btn active" data-scene="tree">Glowing Tree</button>
+          <button class="pill-btn" data-scene="sunset">Neon Sunset</button>
+          <button class="pill-btn" data-scene="orbs">RGB Orbs</button>
+        </div>
+        <label class="upload-dropzone" id="dropzone">
+          <input type="file" id="imageUpload" accept="image/*" hidden>
+          <strong>Upload image</strong> or drag &amp; drop here
+        </label>
+      </div>
+
+      <!-- 2. Paper & Grid Setup -->
+      <div class="control-section">
+        <div class="section-label">2. Paper &amp; Grid Setup</div>
+        <div class="field-row-inline">
+          <div class="field-row">
+            <div class="field-header"><span>Paper Size</span></div>
+            <select id="paperSize">
+              <option value="A5">A5 (148×210 mm)</option>
+              <option value="A4" selected>A4 (210×297 mm)</option>
+              <option value="Letter">Letter (216×279 mm)</option>
+              <option value="A3">A3 (297×420 mm)</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field-header"><span>Graph Square</span></div>
+            <select id="squareSize">
+              <option value="1">1 mm (Ultra-fine)</option>
+              <option value="2" selected>2 mm (Standard)</option>
+              <option value="3">3 mm (Comfortable)</option>
+              <option value="5">5 mm (Coarse/Fast)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field-header">
+            <span>Grid Width (Pixels)</span>
+            <span class="field-value" id="valGridCols">32 px</span>
+          </div>
+          <input type="range" id="gridCols" min="12" max="60" step="2" value="32">
+        </div>
+
+        <div class="effort-banner" id="effortBanner">
+          Calculating drawing segments...
+        </div>
+      </div>
+
+      <!-- 3. Pencil Calibration Preset -->
+      <div class="control-section">
+        <div class="section-label">3. Pencil Palette (5 States)</div>
+        <select id="palettePreset">
+          <option value="reflective" selected>Reflective Colored Pencils (Realistic Dim)</option>
+          <option value="vibrant">Vibrant Wax Pencils (Prismacolor-like)</option>
+          <option value="emissive">Ideal Screen RGB (Emissive Reference)</option>
+        </select>
+        <div id="swatchPreview"></div>
+      </div>
+
+      <!-- 4. Contrast, Dithering & Borders -->
+      <div class="control-section">
+        <div class="section-label">4. Tone &amp; Subpixel Pipeline</div>
+
+        <div class="field-row">
+          <div class="field-header">
+            <span>Contrast Boost (S-Curve)</span>
+            <span class="field-value" id="valContrast">1.45×</span>
+          </div>
+          <input type="range" id="contrastBoost" min="1.0" max="2.4" step="0.05" value="1.45">
+        </div>
+
+        <label class="toggle-row">
+          <span>Floyd–Steinberg Dithering</span>
+          <input type="checkbox" id="ditherToggle" checked>
+        </label>
+
+        <div class="field-row">
+          <div class="field-header">
+            <span>Dither Strength</span>
+            <span class="field-value" id="valDither">85%</span>
+          </div>
+          <input type="range" id="ditherStrength" min="0" max="100" step="5" value="85">
+        </div>
+
+        <div class="field-row">
+          <div class="field-header">
+            <span>Dark Border Between Stripes</span>
+            <span class="field-value" id="valBorder">Thin (15%)</span>
+          </div>
+          <input type="range" id="borderRatio" min="0" max="30" step="5" value="15">
+        </div>
+      </div>
+
+      <!-- 5. Distance Simulation -->
+      <div class="control-section">
+        <div class="section-label">5. Viewing Distance Blur</div>
+        <div class="field-row">
+          <div class="field-header">
+            <span>Viewing Distance</span>
+            <span class="field-value" id="valDistance">2.5 m</span>
+          </div>
+          <input type="range" id="viewDistance" min="0.5" max="6.0" step="0.25" value="2.5">
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Stage -->
+    <section class="main-stage">
+      <!-- Live Metrics -->
+      <div class="metrics-strip">
+        <div class="metric-card">
+          <div class="metric-label">Pixel Grid</div>
+          <div class="metric-val" id="statGrid">32 × 24</div>
+          <div class="metric-sub" id="statStripes">96 stripe columns</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total Segments</div>
+          <div class="metric-val" id="statSegments">2,304</div>
+          <div class="metric-sub" id="statTime">~1.3 hrs est. draw</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Mean Color ΔE</div>
+          <div class="metric-val" id="statDeltaE">6.4</div>
+          <div class="metric-sub">CIELAB perceptual error</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Compute Time</div>
+          <div class="metric-val" id="statMs">18 ms</div>
+          <div class="metric-sub">125 combos / pixel</div>
+        </div>
+      </div>
+
+      <!-- Three-View Preview Comparison -->
+      <div class="preview-grid">
+        <div class="viewport-frame">
+          <div class="viewport-meta">
+            <h2 class="viewport-title">Source (Contrast-Boosted)</h2>
+            <span class="viewport-badge" id="badgeSource">Target</span>
+          </div>
+          <div class="viewport-canvas-wrap">
+            <canvas id="canvasSource"></canvas>
+          </div>
+          <div class="viewport-footer">
+            <span>Downsampled to pixel grid before matching</span>
+          </div>
+        </div>
+
+        <div class="viewport-frame">
+          <div class="viewport-meta">
+            <h2 class="viewport-title">Close-Up Stripes (What You Draw)</h2>
+            <span class="viewport-badge">3× RGB Stripes</span>
+          </div>
+          <div class="viewport-canvas-wrap">
+            <canvas id="canvasCloseup" style="cursor: crosshair;"></canvas>
+          </div>
+          <div class="viewport-footer">
+            <span>Hover or click any pixel to inspect its 3 states</span>
+          </div>
+        </div>
+
+        <div class="viewport-frame">
+          <div class="viewport-meta">
+            <h2 class="viewport-title">Distance View (Optical Mixing)</h2>
+            <span class="viewport-badge" id="badgeDistance">2.5 m blur</span>
+          </div>
+          <div class="viewport-canvas-wrap distance-wrap">
+            <canvas id="canvasDistance"></canvas>
+          </div>
+          <div class="viewport-footer">
+            <span>Simulated eye resolution from across the room</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Pixel Inspector -->
+      <div class="inspector-card" id="inspectorCard">
+        <div class="inspector-group">
+          <strong>Pixel Inspector</strong>
+          <span class="mono-pill" id="inspCoord">Hover Close-Up View</span>
+        </div>
+        <div class="inspector-group">
+          <span>Target:</span>
+          <span class="color-chip" id="inspTargetChip" style="background:#333;"></span>
+          <span>Optical Avg:</span>
+          <span class="color-chip" id="inspAvgChip" style="background:#333;"></span>
+          <span>Stripes:</span>
+          <span class="stripe-mini" id="inspStripes">
+            <span style="background:#999;"></span>
+            <span style="background:#999;"></span>
+            <span style="background:#999;"></span>
+          </span>
+        </div>
+        <div class="inspector-group">
+          <span class="mono-pill" id="inspStates">R: — · G: — · B: —</span>
+          <span class="mono-pill" id="inspDeltaE">ΔE: —</span>
+        </div>
+      </div>
+
+      <!-- Guide Preview & Config Exporter Tabs -->
+      <div class="panel-card">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="tab-rle">Column-by-Column Guide (Artist Workflow)</button>
+          <button class="tab-btn" data-tab="tab-chart">Cross-Stitch Symbol Chart (Tile Preview)</button>
+          <button class="tab-btn" data-tab="tab-config">Pipeline Config JSON</button>
+        </div>
+
+        <!-- Tab 1: Column-by-Column RLE -->
+        <div class="tab-content active" id="tab-rle">
+          <div class="rle-toolbar">
+            <div style="font-size:0.86rem; color:var(--on-surface-variant);">
+              Click any column card to check it off as completed. Consecutive rows with the same state are merged.
+            </div>
+            <div class="mono-pill" style="background:var(--primary-container); color:var(--on-primary-container);" id="rleProgress">
+              0 / 0 columns done
+            </div>
+          </div>
+          <div class="rle-list" id="rleList"></div>
+        </div>
+
+        <!-- Tab 2: Cross-Stitch Chart -->
+        <div class="tab-content" id="tab-chart">
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-sym">□</span> White Paper (Highlight)</span>
+            <span class="legend-item"><span class="legend-sym">●</span> Full Color</span>
+            <span class="legend-item"><span class="legend-sym">◐</span> Color + Light Black</span>
+            <span class="legend-item"><span class="legend-sym">◑</span> Color + Heavy Black</span>
+            <span class="legend-item"><span class="legend-sym">■</span> Solid Black</span>
+          </div>
+          <div style="font-size:0.82rem; color:var(--on-surface-variant); margin-bottom:10px;">
+            Showing top-left tile (first 10 pixels = 30 stripe columns × 16 rows). Full PDF export tiles the entire sheet.
+          </div>
+          <div class="chart-scroll" id="chartContainer"></div>
+        </div>
+
+        <!-- Tab 3: Config JSON -->
+        <div class="tab-content" id="tab-config">
+          <div class="code-header">
+            <span style="font-size:0.85rem; color:var(--on-surface-variant);">
+              Current playground parameters formatted for the production pipeline engine.
+            </span>
+            <button class="btn-copy" id="btnCopyConfig">Copy JSON</button>
+          </div>
+          <pre class="config-code" id="configOutput"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="playground-toast">
+    <span id="toast-message">Copied!</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. PENCIL PALETTES & 5-STATE DEFINITIONS
+    // =========================================================================
+    const STATES = [
+      { id: 0, code: 'W', sym: '□', name: 'White Paper' },
+      { id: 1, code: 'F', sym: '●', name: 'Full Color' },
+      { id: 2, code: 'L', sym: '◐', name: 'Light Black' },
+      { id: 3, code: 'H', sym: '◑', name: 'Heavy Black' },
+      { id: 4, code: 'B', sym: '■', name: 'Solid Black' }
+    ];
+
+    // Each palette defines measured/simulated sRGB [r,g,b] for each channel's 5 states
+    const PALETTES = {
+      reflective: {
+        label: 'Reflective Colored Pencils (Realistic Dim)',
+        border: [24, 24, 26],
+        R: [[244, 241, 234], [198, 46, 42],  [136, 36, 34], [74, 26, 26], [28, 27, 29]],
+        G: [[244, 241, 234], [48, 152, 68],  [36, 104, 48], [26, 58, 34], [28, 27, 29]],
+        B: [[244, 241, 234], [42, 86, 186],  [32, 60, 128], [24, 38, 72], [28, 27, 29]]
+      },
+      vibrant: {
+        label: 'Vibrant Wax Pencils (Prismacolor-like)',
+        border: [18, 18, 20],
+        R: [[250, 248, 242], [232, 38, 36],  [162, 30, 30], [88, 22, 24], [20, 20, 22]],
+        G: [[250, 248, 242], [44, 192, 68],  [32, 130, 48], [22, 70, 32], [20, 20, 22]],
+        B: [[250, 248, 242], [40, 102, 232], [30, 72, 160], [22, 42, 88], [20, 20, 22]]
+      },
+      emissive: {
+        label: 'Ideal Screen RGB (Emissive Reference)',
+        border: [8, 8, 10],
+        R: [[255, 255, 255], [255, 24, 24],  [175, 16, 16], [92, 10, 10], [10, 10, 12]],
+        G: [[255, 255, 255], [24, 255, 42],  [16, 175, 28], [10, 92, 18], [10, 10, 12]],
+        B: [[255, 255, 255], [30, 90, 255],  [20, 62, 175], [12, 34, 92], [10, 10, 12]]
+      }
+    };
+
+    const PAPER_MM = {
+      A5: [148, 210],
+      A4: [210, 297],
+      Letter: [216, 279],
+      A3: [297, 420]
+    };
+
+    // =========================================================================
+    // 2. COLOR MATH (sRGB <-> Linear RGB <-> CIELAB)
+    // =========================================================================
+    function srgbToLinear(c255) {
+      const c = Math.max(0, Math.min(255, c255)) / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    function linearToSrgb(lin) {
+      const c = Math.max(0, Math.min(1, lin));
+      const s = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+      return Math.round(s * 255);
+    }
+
+    function linearRgbToLab(r, g, b) {
+      // sRGB linear -> XYZ (D65)
+      let x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+      let y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750) / 1.00000;
+      let z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) / 1.08883;
+
+      const f = t => t > 0.008856 ? Math.cbrt(t) : (7.787 * t) + 16 / 116;
+      const fx = f(x), fy = f(y), fz = f(z);
+      return [
+        (116 * fy) - 16,
+        500 * (fx - fy),
+        200 * (fy - fz)
+      ];
+    }
+
+    function buildComboLUT(paletteKey, borderRatio) {
+      const pal = PALETTES[paletteKey];
+      const bLin = pal.border.map(srgbToLinear);
+      const rLins = pal.R.map(rgb => rgb.map(srgbToLinear));
+      const gLins = pal.G.map(rgb => rgb.map(srgbToLinear));
+      const bLins = pal.B.map(rgb => rgb.map(srgbToLinear));
+
+      const stripeWeight = (1 - borderRatio) / 3;
+      const combos = [];
+
+      for (let ri = 0; ri < 5; ri++) {
+        for (let gi = 0; gi < 5; gi++) {
+          for (let bi = 0; bi < 5; bi++) {
+            const lr = stripeWeight * (rLins[ri][0] + gLins[gi][0] + bLins[bi][0]) + borderRatio * bLin[0];
+            const lg = stripeWeight * (rLins[ri][1] + gLins[gi][1] + bLins[bi][1]) + borderRatio * bLin[1];
+            const lb = stripeWeight * (rLins[ri][2] + gLins[gi][2] + bLins[bi][2]) + borderRatio * bLin[2];
+            const lab = linearRgbToLab(lr, lg, lb);
+            combos.push({
+              ri, gi, bi,
+              lin: [lr, lg, lb],
+              srgb: [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)],
+              lab
+            });
+          }
+        }
+      }
+      return combos;
+    }
+
+    // =========================================================================
+    // 3. PROCEDURAL SAMPLE SCENES
+    // =========================================================================
+    function generateSceneCanvas(sceneName) {
+      const c = document.createElement('canvas');
+      c.width = 320;
+      c.height = 240;
+      const ctx = c.getContext('2d');
+
+      if (sceneName === 'tree') {
+        // Dark night background inspired by the Christmas tree video
+        const bg = ctx.createRadialGradient(160, 120, 20, 160, 120, 210);
+        bg.addColorStop(0, '#121a24');
+        bg.addColorStop(1, '#050608');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, 320, 240);
+
+        // Trunk
+        ctx.fillStyle = '#7c4a26';
+        ctx.fillRect(142, 184, 36, 44);
+
+        // Tree layers (lush green)
+        const tiers = [
+          { yTop: 28, yBot: 105, halfW: 66, col: '#22c55e' },
+          { yTop: 74, yBot: 152, halfW: 92, col: '#16a34a' },
+          { yTop: 120, yBot: 196, halfW: 118, col: '#15803d' }
+        ];
+        tiers.forEach(t => {
+          ctx.beginPath();
+          ctx.moveTo(160, t.yTop);
+          ctx.lineTo(160 - t.halfW, t.yBot);
+          ctx.lineTo(160 + t.halfW, t.yBot);
+          ctx.closePath();
+          ctx.fillStyle = t.col;
+          ctx.fill();
+        });
+
+        // Glowing Star
+        const drawGlow = (x, y, r, inner, outer) => {
+          const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+          g.addColorStop(0, '#ffffff');
+          g.addColorStop(0.35, inner);
+          g.addColorStop(1, outer);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        };
+
+        drawGlow(160, 28, 28, '#fde047', 'rgba(253,224,71,0)');
+
+        // Glowing ornaments
+        const ornaments = [
+          [135, 84, '#facc15'], [184, 92, '#ef4444'], [156, 118, '#38bdf8'],
+          [116, 138, '#ef4444'], [200, 142, '#facc15'], [146, 164, '#facc15'],
+          [184, 174, '#38bdf8'], [98, 180, '#fde047'], [222, 180, '#ef4444']
+        ];
+        ornaments.forEach(([x, y, col]) => drawGlow(x, y, 17, col, 'rgba(0,0,0,0)'));
+      } else if (sceneName === 'sunset') {
+        // Synthwave / Neon Sunset for testing dithering gradients
+        const sky = ctx.createLinearGradient(0, 0, 0, 165);
+        sky.addColorStop(0, '#0f0c29');
+        sky.addColorStop(0.45, '#6b21a8');
+        sky.addColorStop(0.8, '#ec4899');
+        sky.addColorStop(1, '#fb923c');
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, 320, 165);
+
+        // Glowing Sun
+        const sun = ctx.createLinearGradient(0, 50, 0, 155);
+        sun.addColorStop(0, '#fef08a');
+        sun.addColorStop(0.6, '#fb923c');
+        sun.addColorStop(1, '#f43f5e');
+        ctx.fillStyle = sun;
+        ctx.beginPath();
+        ctx.arc(160, 118, 56, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Dark ocean + reflection
+        const sea = ctx.createLinearGradient(0, 165, 0, 240);
+        sea.addColorStop(0, '#1e1b4b');
+        sea.addColorStop(1, '#09090b');
+        ctx.fillStyle = sea;
+        ctx.fillRect(0, 165, 320, 75);
+
+        // Reflection shimmer
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.75)';
+        ctx.fillRect(118, 170, 84, 8);
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.55)';
+        ctx.fillRect(130, 186, 60, 8);
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.4)';
+        ctx.fillRect(142, 202, 36, 7);
+      } else {
+        // RGB Additive Orbs on dark background
+        ctx.fillStyle = '#07080a';
+        ctx.fillRect(0, 0, 320, 240);
+        ctx.globalCompositeOperation = 'lighter';
+        const orbs = [
+          [125, 102, '#ff2a2a'],
+          [195, 102, '#22e544'],
+          [160, 156, '#2e74ff']
+        ];
+        orbs.forEach(([x, y, col]) => {
+          const g = ctx.createRadialGradient(x, y, 8, x, y, 78);
+          g.addColorStop(0, col);
+          g.addColorStop(0.7, col);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, 78, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      return c;
+    }
+
+    // =========================================================================
+    // 4. APPLICATION STATE & PIPELINE ENGINE
+    // =========================================================================
+    const state = {
+      scene: 'tree',
+      sourceImage: null, // HTMLCanvasElement or HTMLImageElement
+      paperSize: 'A4',
+      squareSize: 2,
+      gridCols: 32,
+      palettePreset: 'reflective',
+      contrastBoost: 1.45,
+      ditherEnabled: true,
+      ditherStrength: 0.85,
+      borderRatio: 0.15,
+      viewDistance: 2.5,
+      // Computed outputs
+      gridRows: 24,
+      matchedGrid: [], // [row][col] = { targetSrgb, combo, deltaE }
+      completedCols: new Set()
+    };
+
+    const els = {
+      paperSize: document.getElementById('paperSize'),
+      squareSize: document.getElementById('squareSize'),
+      gridCols: document.getElementById('gridCols'),
+      palettePreset: document.getElementById('palettePreset'),
+      contrastBoost: document.getElementById('contrastBoost'),
+      ditherToggle: document.getElementById('ditherToggle'),
+      ditherStrength: document.getElementById('ditherStrength'),
+      borderRatio: document.getElementById('borderRatio'),
+      viewDistance: document.getElementById('viewDistance'),
+      canvasSource: document.getElementById('canvasSource'),
+      canvasCloseup: document.getElementById('canvasCloseup'),
+      canvasDistance: document.getElementById('canvasDistance')
+    };
+
+    function applyContrastSCurve(v255, boost) {
+      if (boost <= 1.01) return v255;
+      const x = v255 / 255;
+      // Smooth sigmoidal S-curve centered at 0.45 so darks crush deeper for "screen glow"
+      const k = (boost - 1.0) * 5.0 + 1.0;
+      const centered = (x - 0.46) * k;
+      const sig = 1 / (1 + Math.exp(-centered * 2.4));
+      const minSig = 1 / (1 + Math.exp(0.46 * k * 2.4));
+      const maxSig = 1 / (1 + Math.exp(-(1 - 0.46) * k * 2.4));
+      const norm = (sig - minSig) / (maxSig - minSig);
+      return Math.max(0, Math.min(255, Math.round(norm * 255)));
+    }
+
+    function renderSwatches() {
+      const pal = PALETTES[state.palettePreset];
+      const container = document.getElementById('swatchPreview');
+      container.innerHTML = ['R', 'G', 'B'].map(ch => `
+        <div class="swatch-row-label">
+          <span>${ch === 'R' ? 'Red' : ch === 'G' ? 'Green' : 'Blue'} Stripe</span>
+          <span>□ → ● → ◐ → ◑ → ■</span>
+        </div>
+        <div class="swatch-grid" style="margin-bottom:6px;">
+          ${pal[ch].map((rgb, idx) => `
+            <div class="swatch-cell" title="${ch}: ${STATES[idx].name} rgb(${rgb.join(',')})" style="background:rgb(${rgb.join(',')});"></div>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    function updateEffortWarning(cols, rows) {
+      const segments = cols * rows * 3;
+      const [paperW, paperH] = PAPER_MM[state.paperSize];
+      const maxColsOnPaper = Math.floor((paperW - 20) / (state.squareSize * 3));
+      const banner = document.getElementById('effortBanner');
+
+      let cls = 'effort-banner';
+      let msg = `<strong>${segments.toLocaleString()} segments</strong> (${cols}×${rows} px). Fits nicely on ${state.paperSize} (${state.squareSize}mm squares allow up to ~${maxColsOnPaper} px wide).`;
+
+      if (cols > maxColsOnPaper) {
+        cls += ' warn';
+        msg = `<strong>Multi-page tiling needed:</strong> ${cols} px × 3 stripes × ${state.squareSize}mm = ${cols * 3 * state.squareSize}mm wide (exceeds ${state.paperSize} printable width of ${paperW - 20}mm).`;
+      } else if (segments > 6500) {
+        cls += ' danger';
+        msg = `<strong>Very dense (${segments.toLocaleString()} segments):</strong> Expect 4+ hours of shading. Consider lowering grid width or using larger graph squares.`;
+      } else if (segments > 3600) {
+        cls += ' warn';
+        msg = `<strong>Detailed project (${segments.toLocaleString()} segments):</strong> Above 3,600 segments (~2–3 hrs). Great detail, test Distance View before committing.`;
+      }
+
+      banner.className = cls;
+      banner.innerHTML = msg;
+    }
+
+    function runPipeline() {
+      const t0 = performance.now();
+      const src = state.sourceImage;
+      if (!src) return;
+
+      const cols = state.gridCols;
+      const aspect = (src.height || 240) / (src.width || 320);
+      const rows = Math.max(8, Math.round(cols * aspect));
+      state.gridRows = rows;
+
+      // 1. Downsample source to cols x rows
+      const tmp = document.createElement('canvas');
+      tmp.width = cols;
+      tmp.height = rows;
+      const tctx = tmp.getContext('2d');
+      tctx.imageSmoothingEnabled = true;
+      tctx.imageSmoothingQuality = 'high';
+      tctx.drawImage(src, 0, 0, cols, rows);
+      const imgData = tctx.getImageData(0, 0, cols, rows);
+      const px = imgData.data;
+
+      // 2. Apply contrast boost & convert to linear float working buffer
+      const linBuf = new Float32Array(cols * rows * 3);
+      const boostedData = new Uint8ClampedArray(px.length);
+
+      for (let i = 0; i < cols * rows; i++) {
+        const r = applyContrastSCurve(px[i * 4], state.contrastBoost);
+        const g = applyContrastSCurve(px[i * 4 + 1], state.contrastBoost);
+        const b = applyContrastSCurve(px[i * 4 + 2], state.contrastBoost);
+        boostedData[i * 4] = r;
+        boostedData[i * 4 + 1] = g;
+        boostedData[i * 4 + 2] = b;
+        boostedData[i * 4 + 3] = 255;
+
+        linBuf[i * 3] = srgbToLinear(r);
+        linBuf[i * 3 + 1] = srgbToLinear(g);
+        linBuf[i * 3 + 2] = srgbToLinear(b);
+      }
+
+      // Draw Source (Contrast-Boosted) preview
+      const srcCanvas = els.canvasSource;
+      const scale = Math.max(4, Math.floor(300 / Math.max(cols, rows)));
+      srcCanvas.width = cols * scale;
+      srcCanvas.height = rows * scale;
+      const sctx = srcCanvas.getContext('2d');
+      const tmpBoost = document.createElement('canvas');
+      tmpBoost.width = cols;
+      tmpBoost.height = rows;
+      tmpBoost.getContext('2d').putImageData(new ImageData(boostedData, cols, rows), 0, 0);
+      sctx.imageSmoothingEnabled = false;
+      sctx.drawImage(tmpBoost, 0, 0, srcCanvas.width, srcCanvas.height);
+
+      // 3. Build 125-combo LUT & match each pixel + Floyd-Steinberg error diffusion
+      const combos = buildComboLUT(state.palettePreset, state.borderRatio);
+      const matched = Array.from({ length: rows }, () => new Array(cols));
+      const ditherScale = state.ditherEnabled ? state.ditherStrength : 0;
+      let totalDeltaE = 0;
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const idx = (y * cols + x) * 3;
+          const tr = Math.max(0, Math.min(1, linBuf[idx]));
+          const tg = Math.max(0, Math.min(1, linBuf[idx + 1]));
+          const tb = Math.max(0, Math.min(1, linBuf[idx + 2]));
+
+          const [tL, ta, tbLab] = linearRgbToLab(tr, tg, tb);
+
+          let best = combos[0];
+          let bestDistSq = Infinity;
+
+          for (let c = 0; c < 125; c++) {
+            const cand = combos[c];
+            const dL = tL - cand.lab[0];
+            const da = ta - cand.lab[1];
+            const db = tbLab - cand.lab[2];
+            const distSq = dL * dL + da * da + db * db;
+            if (distSq < bestDistSq) {
+              bestDistSq = distSq;
+              best = cand;
+            }
+          }
+
+          const deltaE = Math.sqrt(bestDistSq);
+          totalDeltaE += deltaE;
+
+          matched[y][x] = {
+            targetSrgb: [
+              boostedData[(y * cols + x) * 4],
+              boostedData[(y * cols + x) * 4 + 1],
+              boostedData[(y * cols + x) * 4 + 2]
+            ],
+            combo: best,
+            deltaE
+          };
+
+          // Propagate linear RGB error (Floyd-Steinberg)
+          if (ditherScale > 0) {
+            const er = (tr - best.lin[0]) * ditherScale;
+            const eg = (tg - best.lin[1]) * ditherScale;
+            const eb = (tb - best.lin[2]) * ditherScale;
+
+            const addErr = (nx, ny, w) => {
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                const ni = (ny * cols + nx) * 3;
+                linBuf[ni] += er * w;
+                linBuf[ni + 1] += eg * w;
+                linBuf[ni + 2] += eb * w;
+              }
+            };
+            addErr(x + 1, y, 7 / 16);
+            addErr(x - 1, y + 1, 3 / 16);
+            addErr(x, y + 1, 5 / 16);
+            addErr(x + 1, y + 1, 1 / 16);
+          }
+        }
+      }
+
+      state.matchedGrid = matched;
+      const elapsed = Math.round(performance.now() - t0);
+
+      // 4. Render Close-Up Stripes Canvas
+      renderCloseupAndDistance(cols, rows, matched);
+
+      // 5. Update metrics, warnings, guides & config JSON
+      const meanDE = (totalDeltaE / (cols * rows)).toFixed(1);
+      const totalSegs = cols * rows * 3;
+      const estHours = (totalSegs / 1800).toFixed(1);
+
+      document.getElementById('statGrid').textContent = `${cols} × ${rows}`;
+      document.getElementById('statStripes').textContent = `${cols * 3} stripe columns`;
+      document.getElementById('statSegments').textContent = totalSegs.toLocaleString();
+      document.getElementById('statTime').textContent = `~${estHours} hrs est. draw`;
+      document.getElementById('statDeltaE').textContent = meanDE;
+      document.getElementById('statMs').textContent = `${elapsed} ms`;
+      document.getElementById('badgeSource').textContent = `${cols}×${rows} px`;
+      document.getElementById('badgeDistance').textContent = `${state.viewDistance.toFixed(2)} m blur`;
+
+      updateEffortWarning(cols, rows);
+      renderRLEGuide(cols, rows, matched);
+      renderCrossStitchChart(cols, rows, matched);
+      renderConfigJSON(cols, rows, meanDE);
+    }
+
+    function renderCloseupAndDistance(cols, rows, matched) {
+      const pal = PALETTES[state.palettePreset];
+      const cellPx = 12; // 12px per logical pixel (4px per R/G/B stripe)
+      const stripeW = cellPx / 3;
+      const borderW = Math.round(stripeW * state.borderRatio * 1.5);
+
+      const closeCanvas = els.canvasCloseup;
+      closeCanvas.width = cols * cellPx;
+      closeCanvas.height = rows * cellPx;
+      const ctx = closeCanvas.getContext('2d');
+
+      // Dark border background
+      ctx.fillStyle = `rgb(${pal.border.join(',')})`;
+      ctx.fillRect(0, 0, closeCanvas.width, closeCanvas.height);
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const { ri, gi, bi } = matched[y][x].combo;
+          const pxX = x * cellPx;
+          const pxY = y * cellPx;
+          const drawW = Math.max(1, stripeW - borderW);
+          const drawH = Math.max(1, cellPx - (borderW > 0 ? 1 : 0));
+
+          ctx.fillStyle = `rgb(${pal.R[ri].join(',')})`;
+          ctx.fillRect(pxX, pxY, drawW, drawH);
+
+          ctx.fillStyle = `rgb(${pal.G[gi].join(',')})`;
+          ctx.fillRect(pxX + stripeW, pxY, drawW, drawH);
+
+          ctx.fillStyle = `rgb(${pal.B[bi].join(',')})`;
+          ctx.fillRect(pxX + stripeW * 2, pxY, drawW, drawH);
+        }
+      }
+
+      // Distance View: apply Gaussian blur proportional to viewing distance & grid density
+      const distCanvas = els.canvasDistance;
+      distCanvas.width = closeCanvas.width;
+      distCanvas.height = closeCanvas.height;
+      const dctx = distCanvas.getContext('2d');
+
+      // Physical pitch of one pixel triplet in mm = squareSize * 3
+      // Blur in canvas pixels scales with viewingDistance / squareSize
+      const blurPx = Math.max(0.5, (state.viewDistance * 2.1) * (2 / state.squareSize));
+      dctx.fillStyle = `rgb(${pal.border.join(',')})`;
+      dctx.fillRect(0, 0, distCanvas.width, distCanvas.height);
+      dctx.filter = `blur(${blurPx.toFixed(1)}px)`;
+      dctx.drawImage(closeCanvas, 0, 0);
+      dctx.filter = 'none';
+    }
+
+    // =========================================================================
+    // 5. GUIDE PREVIEWS (RLE COLUMNS & CROSS-STITCH TILE)
+    // =========================================================================
+    function renderRLEGuide(cols, rows, matched) {
+      const list = document.getElementById('rleList');
+      const channels = ['R', 'G', 'B'];
+      const keys = ['ri', 'gi', 'bi'];
+      const maxPreviewCols = Math.min(cols * 3, 36); // Show first 36 stripe cols in playground
+
+      let html = '';
+      for (let sc = 0; sc < maxPreviewCols; sc++) {
+        const pxCol = Math.floor(sc / 3);
+        const chIdx = sc % 3;
+        const ch = channels[chIdx];
+        const key = keys[chIdx];
+        const colId = `${ch}${pxCol + 1}`;
+
+        // Run-length encode vertical rows
+        const runs = [];
+        let runStart = 0;
+        let curState = matched[0][pxCol].combo[key];
+
+        for (let r = 1; r <= rows; r++) {
+          const nextState = r < rows ? matched[r][pxCol].combo[key] : -1;
+          if (nextState !== curState) {
+            const label = runStart === r - 1 ? `r${runStart + 1}` : `r${runStart + 1}–${r}`;
+            runs.push(`${label} ${STATES[curState].sym} ${STATES[curState].name}`);
+            runStart = r;
+            curState = nextState;
+          }
+        }
+
+        const isDone = state.completedCols.has(colId);
+        html += `
+          <div class="rle-card ${isDone ? 'done' : ''}" data-col="${colId}">
+            <span class="rle-col-tag ${ch}">${colId}</span>
+            <div class="rle-runs">${runs.join(' · ')}</div>
+          </div>
+        `;
+      }
+
+      list.innerHTML = html;
+      updateRleProgress(maxPreviewCols);
+
+      list.querySelectorAll('.rle-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const id = card.dataset.col;
+          if (state.completedCols.has(id)) {
+            state.completedCols.delete(id);
+            card.classList.remove('done');
+          } else {
+            state.completedCols.add(id);
+            card.classList.add('done');
+          }
+          updateRleProgress(maxPreviewCols);
+        });
+      });
+    }
+
+    function updateRleProgress(totalShown) {
+      let doneShown = 0;
+      document.querySelectorAll('.rle-card.done').forEach(() => doneShown++);
+      document.getElementById('rleProgress').textContent = `${doneShown} / ${totalShown} preview cols done`;
+    }
+
+    function renderCrossStitchChart(cols, rows, matched) {
+      const tileCols = Math.min(cols, 10);
+      const tileRows = Math.min(rows, 16);
+      let html = '<table class="chart-table"><thead><tr><th>Row</th>';
+      for (let x = 0; x < tileCols; x++) {
+        html += `<th>R${x + 1}</th><th>G${x + 1}</th><th>B${x + 1}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+
+      for (let y = 0; y < tileRows; y++) {
+        html += `<tr><th>${y + 1}</th>`;
+        for (let x = 0; x < tileCols; x++) {
+          const { ri, gi, bi } = matched[y][x].combo;
+          html += `<td class="col-r" title="R${x+1}, Row ${y+1}: ${STATES[ri].name}">${STATES[ri].sym}</td>`;
+          html += `<td class="col-g" title="G${x+1}, Row ${y+1}: ${STATES[gi].name}">${STATES[gi].sym}</td>`;
+          html += `<td class="col-b" title="B${x+1}, Row ${y+1}: ${STATES[bi].name}">${STATES[bi].sym}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      document.getElementById('chartContainer').innerHTML = html;
+    }
+
+    function renderConfigJSON(cols, rows, meanDE) {
+      const cfg = {
+        paper: {
+          size: state.paperSize,
+          dimensionsMm: PAPER_MM[state.paperSize],
+          graphSquareMm: state.squareSize
+        },
+        grid: {
+          pixelWidth: cols,
+          pixelHeight: rows,
+          stripeColumns: cols * 3,
+          totalSegments: cols * rows * 3
+        },
+        pipeline: {
+          contrastSCurve: state.contrastBoost,
+          dithering: {
+            algorithm: state.ditherEnabled ? 'floyd-steinberg-linear-rgb' : 'none',
+            strength: state.ditherStrength
+          },
+          colorDifferenceMetric: 'CIELAB-DeltaE76',
+          stripeBorderRatio: state.borderRatio
+        },
+        calibration: {
+          preset: state.palettePreset,
+          statesPerChannel: 5,
+          totalCombinationsPerPixel: 125
+        },
+        preview: {
+          viewingDistanceMeters: state.viewDistance,
+          meanDeltaE: Number(meanDE)
+        }
+      };
+      document.getElementById('configOutput').textContent = JSON.stringify(cfg, null, 2);
+    }
+
+    // =========================================================================
+    // 6. INTERACTIVE PIXEL INSPECTOR & EVENT WIRING
+    // =========================================================================
+    function inspectAtEvent(e) {
+      const canvas = els.canvasCloseup;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      const col = Math.floor(cx / 12);
+      const row = Math.floor(cy / 12);
+      if (row < 0 || row >= state.gridRows || col < 0 || col >= state.gridCols) return;
+
+      const cell = state.matchedGrid[row][col];
+      const pal = PALETTES[state.palettePreset];
+      const { ri, gi, bi, srgb } = cell.combo;
+
+      document.getElementById('inspCoord').textContent = `Pixel (${col + 1}, ${row + 1})`;
+      document.getElementById('inspTargetChip').style.background = `rgb(${cell.targetSrgb.join(',')})`;
+      document.getElementById('inspAvgChip').style.background = `rgb(${srgb.join(',')})`;
+
+      const spans = document.getElementById('inspStripes').querySelectorAll('span');
+      spans[0].style.background = `rgb(${pal.R[ri].join(',')})`;
+      spans[1].style.background = `rgb(${pal.G[gi].join(',')})`;
+      spans[2].style.background = `rgb(${pal.B[bi].join(',')})`;
+
+      document.getElementById('inspStates').textContent =
+        `R: ${STATES[ri].sym} ${STATES[ri].name} · G: ${STATES[gi].sym} ${STATES[gi].name} · B: ${STATES[bi].sym} ${STATES[bi].name}`;
+      document.getElementById('inspDeltaE').textContent = `ΔE: ${cell.deltaE.toFixed(1)}`;
+    }
+
+    els.canvasCloseup.addEventListener('mousemove', inspectAtEvent);
+    els.canvasCloseup.addEventListener('click', inspectAtEvent);
+
+    // Scene buttons
+    document.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.scene = btn.dataset.scene;
+        state.sourceImage = generateSceneCanvas(state.scene);
+        state.completedCols.clear();
+        runPipeline();
+      });
+    });
+
+    // Image upload
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('imageUpload');
+
+    function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          state.scene = 'custom';
+          state.sourceImage = img;
+          state.completedCols.clear();
+          runPipeline();
+          showToast(`Loaded "${file.name}"`);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      handleFile(e.dataTransfer.files[0]);
+    });
+
+    // Controls wiring
+    els.paperSize.addEventListener('change', e => { state.paperSize = e.target.value; runPipeline(); });
+    els.squareSize.addEventListener('change', e => { state.squareSize = Number(e.target.value); runPipeline(); });
+    els.gridCols.addEventListener('input', e => {
+      state.gridCols = Number(e.target.value);
+      document.getElementById('valGridCols').textContent = `${state.gridCols} px`;
+      runPipeline();
+    });
+    els.palettePreset.addEventListener('change', e => {
+      state.palettePreset = e.target.value;
+      renderSwatches();
+      runPipeline();
+    });
+    els.contrastBoost.addEventListener('input', e => {
+      state.contrastBoost = Number(e.target.value);
+      document.getElementById('valContrast').textContent = `${state.contrastBoost.toFixed(2)}×`;
+      runPipeline();
+    });
+    els.ditherToggle.addEventListener('change', e => {
+      state.ditherEnabled = e.target.checked;
+      runPipeline();
+    });
+    els.ditherStrength.addEventListener('input', e => {
+      state.ditherStrength = Number(e.target.value) / 100;
+      document.getElementById('valDither').textContent = `${e.target.value}%`;
+      runPipeline();
+    });
+    els.borderRatio.addEventListener('input', e => {
+      const pct = Number(e.target.value);
+      state.borderRatio = pct / 100;
+      const label = pct === 0 ? 'None (0%)' : pct <= 15 ? `Thin (${pct}%)` : `Bold (${pct}%)`;
+      document.getElementById('valBorder').textContent = label;
+      runPipeline();
+    });
+    els.viewDistance.addEventListener('input', e => {
+      state.viewDistance = Number(e.target.value);
+      document.getElementById('valDistance').textContent = `${state.viewDistance.toFixed(2)} m`;
+      runPipeline();
+    });
+
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Copy JSON
+    document.getElementById('btnCopyConfig').addEventListener('click', () => {
+      const txt = document.getElementById('configOutput').textContent;
+      navigator.clipboard.writeText(txt).then(() => showToast('Pipeline config JSON copied!'));
+    });
+
+    function showToast(message) {
+      const toast = document.getElementById('playground-toast');
+      document.getElementById('toast-message').innerText = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Boot
+    renderSwatches();
+    state.sourceImage = generateSceneCanvas('tree');
+    runPipeline();
+  </script>
+</body>
+</html>
