@@ -6,9 +6,8 @@ import { getPalette } from '../../engine/palettes';
 import { createGridStore, type StorageLike } from '../../store/gridStore';
 import {
   type EngineClient,
-  type MatchedCell,
+  type MatchedGrid,
   type SourceImage,
-  type ShadingStateId,
 } from '../../types/pipeline';
 import { mountDropZone, readImageFile } from '../dropZone';
 import { mountGridCanvas } from '../gridCanvas';
@@ -47,23 +46,19 @@ function fixedClient(): EngineClient {
     async process(request) {
       const cols = request.settings.cols;
       const rows = Math.max(8, Math.round(cols * (request.image.height / request.image.width)));
-      const cells: MatchedCell[] = Array.from({ length: cols * rows }, () => ({
-        ri: 1 as ShadingStateId,
-        gi: 2 as ShadingStateId,
-        bi: 4 as ShadingStateId,
-        rgb: [10, 20, 30],
-        srgb: [40, 50, 60],
-        deltaE: 4.2,
-      }));
-      return {
-        grid: {
-          cols,
-          rows,
-          cells,
-          palette: getPalette(request.settings.palette),
-          sourceHash: 'testhash',
-        },
+      const count = cols * rows;
+      const grid: MatchedGrid = {
+        cols,
+        rows,
+        ri: new Uint8Array(count).fill(1),
+        gi: new Uint8Array(count).fill(2),
+        bi: new Uint8Array(count).fill(4),
+        deltaE: new Float32Array(count).fill(4.2),
+        target: new Uint8ClampedArray(count * 3).fill(10),
+        palette: getPalette(request.settings.palette),
+        sourceHash: 'testhash',
       };
+      return { grid };
     },
   };
 }
@@ -379,8 +374,9 @@ describe('Touch inspection', () => {
     canvas.dispatchEvent(pointerEvent('pointerleave', tap));
 
     expect(store.getState().hoveredCell).toEqual({ col: 10, row: 10 });
-    expect(store.getState().completedCells.has('10,10')).toBe(true);
+    expect(store.getState().completedCells.size).toBe(0);
     expect(document.querySelector('[data-ui="coord"]')?.textContent).toBe('X11, Y11');
+    expect(document.querySelector('[data-ui="status"]')?.textContent).toBe('To Do');
     expect(active.classList.contains('visible')).toBe(true);
     expect(empty.style.display).toBe('none');
 

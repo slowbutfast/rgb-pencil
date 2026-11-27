@@ -1,4 +1,4 @@
-import { cellKey, type CellCoord, type MatchedCell, type Rgb } from '../types/pipeline';
+import { cellKey, type CellCoord, type PointerType, type Rgb } from '../types/pipeline';
 import type { GridStore, GridStoreState } from '../store/gridStore';
 
 const AXIS_PAD_LEFT = 34;
@@ -70,12 +70,13 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   const ctx = canvas.getContext('2d');
   const theme = readTheme(canvas);
   const surface: HTMLCanvasElement = canvas;
+  surface.style.touchAction = 'none';
 
   let state: GridStoreState = store.getState();
   let frame: number | null = null;
   let pointerDown = false;
   let dragPaintDone = true;
-  let lastPointerType = 'mouse';
+  let lastPointerType: PointerType = 'mouse';
   let cellSize = 14;
   let cssWidth = 0;
   let cssHeight = 0;
@@ -185,25 +186,25 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     }
   }
 
-  function drawCell(cell: MatchedCell, x: number, y: number, isDone: boolean): void {
+  function drawCell(cellIndex: number, rgb: Rgb, x: number, y: number, isDone: boolean): void {
     if (!ctx) return;
     const px = AXIS_PAD_LEFT + x * cellSize;
     const py = AXIS_PAD_TOP + y * cellSize;
     const grid = state.grid!;
 
     if (state.viewMode === 'grid') {
-      ctx.fillStyle = isDone ? desaturate(cell.rgb) : cssRgb(cell.rgb);
+      ctx.fillStyle = isDone ? desaturate(rgb) : cssRgb(rgb);
       ctx.fillRect(px, py, cellSize, cellSize);
     } else {
       const stripeWidth = cellSize / 3;
       const palette = grid.palette;
       const stripes: ReadonlyArray<readonly [Rgb, number]> = [
-        [palette.R[cell.ri], 0],
-        [palette.G[cell.gi], 1],
-        [palette.B[cell.bi], 2],
+        [palette.R[grid.ri[cellIndex]!]!, 0],
+        [palette.G[grid.gi[cellIndex]!]!, 1],
+        [palette.B[grid.bi[cellIndex]!]!, 2],
       ];
-      for (const [rgb, index] of stripes) {
-        ctx.fillStyle = isDone ? desaturate(rgb) : cssRgb(rgb);
+      for (const [stripRgb, index] of stripes) {
+        ctx.fillStyle = isDone ? desaturate(stripRgb) : cssRgb(stripRgb);
         ctx.fillRect(px + stripeWidth * index, py, stripeWidth, cellSize);
       }
     }
@@ -227,9 +228,9 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
 
     for (let y = 0; y < grid.rows; y += 1) {
       for (let x = 0; x < grid.cols; x += 1) {
-        const cell = grid.cells[y * grid.cols + x];
-        if (!cell) continue;
-        drawCell(cell, x, y, state.completedCells.has(cellKey(x, y)));
+        const index = y * grid.cols + x;
+        const rgb: Rgb = [grid.target[index * 3]!, grid.target[index * 3 + 1]!, grid.target[index * 3 + 2]!];
+        drawCell(index, rgb, x, y, state.completedCells.has(cellKey(x, y)));
       }
     }
 
@@ -300,15 +301,23 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     return { col, row };
   }
 
+  function pointerTypeOf(event: PointerEvent): PointerType {
+    if (event.pointerType === 'touch') return 'touch';
+    if (event.pointerType === 'pen') return 'pen';
+    return 'mouse';
+  }
+
   function onPointerMove(event: PointerEvent): void {
-    lastPointerType = event.pointerType || 'mouse';
+    const type = pointerTypeOf(event);
+    lastPointerType = type;
+    store.setLastPointerType(type);
     const hit = cellFromPointer(event);
     surface.style.cursor = hit ? 'crosshair' : 'default';
     if (!hit) {
       store.setHovered(null);
       return;
     }
-    if (pointerDown) {
+    if (pointerDown && type !== 'touch') {
       const key = cellKey(hit.col, hit.row);
       if (state.completedCells.has(key) !== dragPaintDone) {
         store.paintCell(hit.col, hit.row, dragPaintDone);
@@ -318,9 +327,19 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   }
 
   function onPointerDown(event: PointerEvent): void {
-    lastPointerType = event.pointerType || 'mouse';
+    const type = pointerTypeOf(event);
+    lastPointerType = type;
+    store.setLastPointerType(type);
     const hit = cellFromPointer(event);
     if (!hit) return;
+
+    if (type === 'touch') {
+      // Touch inspects only; completion is the inspector's Mark Done button.
+      pointerDown = false;
+      store.setHovered(hit);
+      return;
+    }
+
     pointerDown = true;
     dragPaintDone = !state.completedCells.has(cellKey(hit.col, hit.row));
     store.paintCell(hit.col, hit.row, dragPaintDone);
@@ -329,7 +348,11 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
 
   function onPointerLeave(event: PointerEvent): void {
     pointerDown = false;
-    lastPointerType = event.pointerType || lastPointerType;
+    const type = pointerTypeOf(event);
+    if (event.pointerType) {
+      lastPointerType = type;
+      store.setLastPointerType(type);
+    }
 
     // A touch tap emits pointerout/pointerleave immediately after pointerup.
     // Keep the inspected cell so the sidebar readout and hover ring stay
@@ -341,7 +364,11 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
   }
 
   function onPointerUp(event: PointerEvent): void {
-    lastPointerType = event.pointerType || lastPointerType;
+    const type = pointerTypeOf(event);
+    if (event.pointerType) {
+      lastPointerType = type;
+      store.setLastPointerType(type);
+    }
     pointerDown = false;
   }
 

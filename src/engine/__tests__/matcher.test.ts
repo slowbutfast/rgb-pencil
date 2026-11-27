@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { srgbToLinear } from '../colorMath';
+import { srgbToLinear, buildComboLUT } from '../colorMath';
 import {
   computeRows,
   downsampleAreaAverage,
@@ -9,6 +9,7 @@ import {
 } from '../matcher';
 import {
   DEFAULT_SETTINGS,
+  type MatchedGrid,
   type PipelineSettings,
   type SourceImage,
 } from '../../types/pipeline';
@@ -28,15 +29,18 @@ function settings(overrides: Partial<PipelineSettings> = {}): PipelineSettings {
   return { ...DEFAULT_SETTINGS, ...overrides };
 }
 
-function meanLinearLuminance(values: readonly (readonly [number, number, number])[]): number {
+function meanMixLuminance(grid: MatchedGrid): number {
+  const lut = buildComboLUT(grid.palette);
   let total = 0;
-  for (const value of values) {
+  const count = grid.cols * grid.rows;
+  for (let i = 0; i < count; i += 1) {
+    const combo = lut[grid.ri[i]! * 25 + grid.gi[i]! * 5 + grid.bi[i]!]!;
     total +=
-      0.2126 * srgbToLinear(value[0]) +
-      0.7152 * srgbToLinear(value[1]) +
-      0.0722 * srgbToLinear(value[2]);
+      0.2126 * srgbToLinear(combo.srgb[0]) +
+      0.7152 * srgbToLinear(combo.srgb[1]) +
+      0.0722 * srgbToLinear(combo.srgb[2]);
   }
-  return total / values.length;
+  return total / count;
 }
 
 describe('computeRows', () => {
@@ -87,7 +91,8 @@ describe('matchGrid', () => {
     const result = matchGrid(uniformImage(320, 240, [120, 90, 60]), settings());
     expect(result.cols).toBe(56);
     expect(result.rows).toBe(42);
-    expect(result.cells).toHaveLength(56 * 42);
+    expect(result.ri).toHaveLength(56 * 42);
+    expect(result.target).toHaveLength(56 * 42 * 3);
     expect(result.sourceHash).toMatch(/^[0-9a-f]{8}$/);
   });
 
@@ -101,15 +106,20 @@ describe('matchGrid', () => {
     const image = uniformImage(16, 16, [128, 128, 128]);
     const result = matchGrid(image, settings({ cols: 16, dither: false }));
 
-    const first = result.cells[2 * 16 + 2]!;
-    const second = result.cells[10 * 16 + 10]!;
-    expect([first.ri, first.gi, first.bi]).toEqual([second.ri, second.gi, second.bi]);
-    expect(first.deltaE).toBe(second.deltaE);
+    const first = 2 * 16 + 2;
+    const second = 10 * 16 + 10;
+    expect([result.ri[first], result.gi[first], result.bi[first]]).toEqual([
+      result.ri[second],
+      result.gi[second],
+      result.bi[second],
+    ]);
+    expect(result.deltaE[first]).toBe(result.deltaE[second]);
   });
 
   it('reduces mean luminance error on a flat mid-gray patch with dithering', () => {
     const image = uniformImage(180, 180, [128, 128, 128]);
-    const target = [128, 128, 128] as const;
+    const targetLuminance =
+      0.2126 * srgbToLinear(128) + 0.7152 * srgbToLinear(128) + 0.0722 * srgbToLinear(128);
 
     const withoutDither = matchGrid(
       image,
@@ -117,11 +127,10 @@ describe('matchGrid', () => {
     );
     const withDither = matchGrid(image, settings({ cols: 45, contrast: 1, dither: true }));
 
-    const targetLuminance = meanLinearLuminance([target]);
-    const error = (cells: typeof withoutDither.cells): number =>
-      Math.abs(meanLinearLuminance(cells.map((cell) => cell.srgb)) - targetLuminance);
+    const error = (grid: MatchedGrid): number =>
+      Math.abs(meanMixLuminance(grid) - targetLuminance);
 
-    expect(error(withDither.cells)).toBeLessThan(error(withoutDither.cells));
+    expect(error(withDither)).toBeLessThan(error(withoutDither));
   });
 
   it('keeps the contrast-boosted source colour on every cell', () => {
@@ -129,9 +138,9 @@ describe('matchGrid', () => {
       uniformImage(160, 120, [200, 100, 50]),
       settings({ cols: 20, contrast: 1.45 }),
     );
-    for (const cell of result.cells) {
-      expect(cell.rgb[0]).toBeGreaterThan(200);
-      expect(cell.rgb[1]).toBeLessThan(100);
+    for (let i = 0; i < result.cols * result.rows; i += 1) {
+      expect(result.target[i * 3]).toBeGreaterThan(200);
+      expect(result.target[i * 3 + 1]).toBeLessThan(100);
     }
   });
 });

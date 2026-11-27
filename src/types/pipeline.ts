@@ -98,14 +98,77 @@ export interface MatchedCell {
   deltaE: number;
 }
 
+/**
+ * Flat, structured-clone-safe result grid. Per-cell values live in typed
+ * arrays indexed row-major by `i = row * cols + col`; `target` stores the
+ * contrast-boosted source colour as three consecutive bytes per cell.
+ */
 export interface MatchedGrid {
   cols: number;
   rows: number;
-  /** Row-major cells, length `cols * rows`. */
-  cells: MatchedCell[];
+  ri: Uint8Array;
+  gi: Uint8Array;
+  bi: Uint8Array;
+  deltaE: Float32Array;
+  /** Contrast-boosted source RGB, length `3 * cols * rows`. */
+  target: Uint8ClampedArray;
   palette: PencilPalette;
   sourceHash: string;
 }
+
+/** Bounded RGBA source sent to the pipeline (longest edge <= 512 px). */
+export interface WorkingBitmap {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+export type ChannelId = 'R' | 'G' | 'B';
+
+/** One maximal vertical run of a single shading state inside a stripe column. */
+export interface RleRun {
+  state: ShadingStateId;
+  startRow: number;
+  length: number;
+}
+
+/** The ordered top-to-bottom runs of one of the `3 * cols` stripe columns. */
+export interface ColumnInstruction {
+  stripeColumn: number;
+  logicalColumn: number;
+  channel: ChannelId;
+  runs: RleRun[];
+}
+
+export type StateCounts = [number, number, number, number, number];
+
+/** Inclusive 0-based rectangular window of the symbol chart. */
+export interface ChartTile {
+  colStart: number;
+  colEnd: number;
+  rowStart: number;
+  rowEnd: number;
+}
+
+export type PageSize = 'a4' | 'letter';
+
+export interface ExportOptions {
+  pageSize: PageSize;
+  includeTemplate: boolean;
+  templateCellMm: number;
+}
+
+export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
+  pageSize: 'a4',
+  includeTemplate: false,
+  templateCellMm: 6,
+};
+
+export const MIN_TEMPLATE_MM = 4;
+export const MAX_TEMPLATE_MM = 12;
+
+export type PipelineStatus = 'idle' | 'pending' | 'error';
+export type PointerType = 'mouse' | 'pen' | 'touch';
 
 export interface PipelineRequest {
   image: SourceImage;
@@ -116,9 +179,23 @@ export interface PipelineResult {
   grid: MatchedGrid;
 }
 
+/** One worker round trip; `jobId` is echoed back in the response. */
+export interface PipelineJobRequest {
+  jobId: number;
+  request: PipelineRequest;
+}
+
+export type PipelineResponse =
+  | { ok: true; jobId: number; grid: MatchedGrid }
+  | { ok: false; jobId: number; error: string };
+
 /** The single seam between UI/state and computation. */
 export interface EngineClient {
   process(request: PipelineRequest): Promise<PipelineResult>;
+  /** Drop any in-flight/pending work after the source image changes. */
+  invalidate?(): void;
+  /** Release the worker (if any). */
+  dispose?(): void;
 }
 
 export interface CellCoord {

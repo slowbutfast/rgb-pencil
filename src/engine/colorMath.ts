@@ -1,3 +1,5 @@
+import { converter } from 'culori';
+
 import {
   DARK_BORDER_RATIO,
   type ComboLUTEntry,
@@ -8,6 +10,18 @@ import {
 } from '../types/pipeline';
 
 export type { Lab } from '../types/pipeline';
+
+const toLab65 = converter('lab65');
+
+/**
+ * `culori`-backed linear-RGB → CIELAB conversion (D65 white point). Used only
+ * while building the 125-entry LUT, never in the per-pixel loop.
+ */
+export function linearRgbToLabCulori(r: number, g: number, b: number): Lab {
+  const converted = toLab65({ mode: 'lrgb', r, g, b });
+  if (!converted) throw new RangeError('culori could not convert the colour');
+  return [converted.l, converted.a, converted.b];
+}
 
 /**
  * IEC 61966-2-1 sRGB transfer function (8-bit input to linear light 0-1).
@@ -77,16 +91,32 @@ export function buildComboLUT(
         const lb =
           stripeShare * (rLin[ri]![2] + gLin[gi]![2] + bLin[bi]![2]) +
           borderRatio * borderLin[2];
+        const srgb: Rgb = [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)];
         combos.push({
           ri: ri as ShadingStateId,
           gi: gi as ShadingStateId,
           bi: bi as ShadingStateId,
           lin: [lr, lg, lb],
-          srgb: [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)],
-          lab: linearRgbToLab(lr, lg, lb),
+          srgb,
+          lab: linearRgbToLabCulori(lr, lg, lb),
         });
       }
     }
   }
   return combos;
+}
+
+/**
+ * Flatten a combo LUT into the `Float32Array` of `L* a* b*` triples the
+ * matcher's hot loop scans. Index matches `ri * 25 + gi * 5 + bi`.
+ */
+export function buildLabTable(lut: readonly ComboLUTEntry[]): Float32Array {
+  const table = new Float32Array(lut.length * 3);
+  for (let i = 0; i < lut.length; i += 1) {
+    const lab = lut[i]!.lab;
+    table[i * 3] = lab[0];
+    table[i * 3 + 1] = lab[1];
+    table[i * 3 + 2] = lab[2];
+  }
+  return table;
 }

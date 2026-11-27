@@ -2,6 +2,10 @@
 
 * { box-sizing: border-box; }
 
+/* Dynamic controls toggle the `hidden` attribute; author display rules such as
+   `.btn { display: inline-flex }` must not keep them rendered. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -97,6 +101,7 @@ html, body {
 .btn.primary { background: var(--ink); color: var(--on-ink); }
 .btn.primary:hover { background: var(--ink-hover); }
 .btn.active { background: var(--surface-active); font-weight: 600; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn:focus-visible,
 .sample-chip:focus-visible,

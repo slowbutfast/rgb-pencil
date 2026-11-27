@@ -1,6 +1,6 @@
 import { renderSampleScene, SAMPLE_SCENE_NAMES, type SampleSceneName } from '../engine/sampleScenes';
 import type { GridStore, GridStoreState } from '../store/gridStore';
-import type { PaletteKey } from '../types/pipeline';
+import type { PageSize, PaletteKey } from '../types/pipeline';
 import { readImageElement } from './dropZone';
 
 function element<T extends HTMLElement>(root: HTMLElement, name: string): T {
@@ -28,6 +28,57 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
   const ditherInput = element<HTMLInputElement>(root, 'dither-input');
   const chips = Array.from(root.querySelectorAll<HTMLElement>('[data-ui="sample"]'));
 
+  // Export options (kept inside the existing collapsed-by-default popover).
+  const pageSizeRow = document.createElement('div');
+  pageSizeRow.className = 'setting-row';
+  const pageSizeHead = document.createElement('div');
+  pageSizeHead.className = 'setting-head';
+  const pageSizeLabel = document.createElement('span');
+  pageSizeLabel.textContent = 'Page Size';
+  pageSizeHead.appendChild(pageSizeLabel);
+  const pageSizeInput = document.createElement('select');
+  pageSizeInput.dataset.ui = 'page-size';
+  for (const [value, label] of [
+    ['a4', 'A4'],
+    ['letter', 'US Letter'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    pageSizeInput.appendChild(option);
+  }
+  pageSizeRow.append(pageSizeHead, pageSizeInput);
+
+  const templateRow = document.createElement('label');
+  templateRow.className = 'toggle-line';
+  const templateLabel = document.createElement('span');
+  templateLabel.textContent = 'Include faint template';
+  const templateInput = document.createElement('input');
+  templateInput.type = 'checkbox';
+  templateInput.dataset.ui = 'template-toggle';
+  templateRow.append(templateLabel, templateInput);
+
+  const cellRow = document.createElement('div');
+  cellRow.className = 'setting-row';
+  const cellHead = document.createElement('div');
+  cellHead.className = 'setting-head';
+  const cellLabel = document.createElement('span');
+  cellLabel.textContent = 'Template Cell Size';
+  const cellValue = document.createElement('span');
+  cellValue.dataset.ui = 'template-mm-value';
+  cellValue.textContent = '6 mm';
+  cellHead.append(cellLabel, cellValue);
+  const cellInput = document.createElement('input');
+  cellInput.type = 'range';
+  cellInput.min = '4';
+  cellInput.max = '12';
+  cellInput.step = '1';
+  cellInput.value = '6';
+  cellInput.dataset.ui = 'template-mm';
+  cellRow.append(cellHead, cellInput);
+
+  popover.append(pageSizeRow, templateRow, cellRow);
+
   function setOpen(open: boolean): void {
     popover.classList.toggle('open', open);
     trigger.classList.toggle('active', open);
@@ -41,6 +92,11 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     contrastValue.textContent = `${state.settings.contrast.toFixed(2)}×`;
     paletteInput.value = state.settings.palette;
     ditherInput.checked = state.settings.dither;
+
+    pageSizeInput.value = state.exportOptions.pageSize;
+    templateInput.checked = state.exportOptions.includeTemplate;
+    cellInput.value = String(state.exportOptions.templateCellMm);
+    cellValue.textContent = `${state.exportOptions.templateCellMm} mm`;
   }
 
   const onTrigger = (event: MouseEvent): void => {
@@ -71,6 +127,18 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     void store.setDither(ditherInput.checked);
   };
 
+  const onPageSize = (): void => {
+    store.setExportOptions({ pageSize: pageSizeInput.value as PageSize });
+  };
+
+  const onTemplate = (): void => {
+    store.setExportOptions({ includeTemplate: templateInput.checked });
+  };
+
+  const onTemplateCell = (): void => {
+    store.setExportOptions({ templateCellMm: Number(cellInput.value) });
+  };
+
   const onSample = (chip: HTMLElement): void => {
     const scene = chip.dataset.scene ?? '';
     if (!isSampleScene(scene)) return;
@@ -93,6 +161,9 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
   contrastInput.addEventListener('input', onContrast);
   paletteInput.addEventListener('change', onPalette);
   ditherInput.addEventListener('change', onDither);
+  pageSizeInput.addEventListener('change', onPageSize);
+  templateInput.addEventListener('change', onTemplate);
+  cellInput.addEventListener('input', onTemplateCell);
 
   const unsubscribe = store.subscribe(render);
   render(store.getState());
@@ -105,6 +176,12 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     contrastInput.removeEventListener('input', onContrast);
     paletteInput.removeEventListener('change', onPalette);
     ditherInput.removeEventListener('change', onDither);
+    pageSizeInput.removeEventListener('change', onPageSize);
+    templateInput.removeEventListener('change', onTemplate);
+    cellInput.removeEventListener('input', onTemplateCell);
+    pageSizeRow.remove();
+    templateRow.remove();
+    cellRow.remove();
     sampleHandlers.forEach(({ chip, handler }) => chip.removeEventListener('click', handler));
   };
 }

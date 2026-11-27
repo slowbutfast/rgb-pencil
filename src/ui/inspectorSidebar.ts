@@ -1,6 +1,8 @@
+import { readMatchedCell } from '../engine/matcher';
 import {
   cellKey,
   SHADING_STATES,
+  type CellCoord,
   type Rgb,
   type ShadingSeries,
   type ShadingStateId,
@@ -44,22 +46,57 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
   const hint = element(root, 'hint');
   const delta = element(root, 'delta');
 
+  const markDone = document.createElement('button');
+  markDone.type = 'button';
+  markDone.dataset.ui = 'mark-done';
+  markDone.className = 'btn';
+  markDone.textContent = 'Mark Done';
+  markDone.hidden = true;
+  markDone.style.minWidth = '44px';
+  markDone.style.minHeight = '44px';
+  markDone.style.width = '100%';
+  markDone.style.justifyContent = 'center';
+  markDone.style.background = 'var(--surface-active)';
+  markDone.style.border = '1px solid var(--line-strong)';
+  markDone.style.fontWeight = '600';
+  const headerRow = coord.closest('.coord-row');
+  if (headerRow && headerRow.parentElement) {
+    headerRow.parentElement.insertBefore(markDone, headerRow.nextSibling);
+  } else {
+    active.insertBefore(markDone, active.firstChild);
+  }
+  markDone.style.display = 'none';
+
+  let inspected: CellCoord | null = null;
+
+  function setMarkDoneVisible(visible: boolean): void {
+    // `.btn` sets `display: inline-flex`, which overrides the UA `[hidden]`
+    // rule; the inline display keeps the button genuinely unrendered.
+    markDone.hidden = !visible;
+    markDone.style.display = visible ? '' : 'none';
+  }
+
   function render(state: GridStoreState): void {
     const { grid, hoveredCell } = state;
     if (!grid || !hoveredCell) {
+      inspected = null;
+      setMarkDoneVisible(false);
       emptyState.style.display = '';
       active.classList.remove('visible');
       return;
     }
 
     const { col, row } = hoveredCell;
-    const cell = grid.cells[row * grid.cols + col];
+    const cell = readMatchedCell(grid, col, row);
     if (!cell) {
+      inspected = null;
+      setMarkDoneVisible(false);
       emptyState.style.display = '';
       active.classList.remove('visible');
       return;
     }
 
+    inspected = { col, row };
     emptyState.style.display = 'none';
     active.classList.add('visible');
 
@@ -87,12 +124,32 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
     subG.textContent = `${stateG.symbol} Green Stripe`;
     subB.textContent = `${stateB.symbol} Blue Stripe`;
 
-    hint.textContent = done ? 'Click cell to undo' : 'Click cell to mark done';
+    const touch = state.lastPointerType === 'touch';
+    hint.textContent = touch
+      ? done
+        ? 'Press Undo to clear this cell'
+        : 'Press Mark Done to complete'
+      : done
+        ? 'Click cell to undo'
+        : 'Click cell to mark done';
     delta.textContent = `ΔE ${cell.deltaE.toFixed(1)}`;
+
+    setMarkDoneVisible(touch);
+    markDone.textContent = done ? 'Undo' : 'Mark Done';
   }
 
+  const onMarkDone = (): void => {
+    if (!inspected) return;
+    store.toggleCell(inspected.col, inspected.row);
+  };
+
+  markDone.addEventListener('click', onMarkDone);
   const unsubscribe = store.subscribe(render);
   render(store.getState());
 
-  return unsubscribe;
+  return () => {
+    unsubscribe();
+    markDone.removeEventListener('click', onMarkDone);
+    markDone.remove();
+  };
 }

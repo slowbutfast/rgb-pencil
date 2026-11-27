@@ -33,7 +33,7 @@ describe('createLocalEngineClient', () => {
     const direct = matchGrid(image, request.settings);
 
     expect(viaClient.grid).toEqual(direct);
-    expect(viaClient.grid.cells).toHaveLength(direct.cells.length);
+    expect(viaClient.grid.ri).toHaveLength(direct.cols * direct.rows);
   });
 
   it.each([15, 97])('rejects width %s outside 16-96', async (cols) => {

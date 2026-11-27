@@ -1,4 +1,4 @@
-import { matchGrid } from './matcher';
+import { runPipeline } from './pipeline';
 import type {
   EngineClient,
   PipelineRequest,
@@ -6,14 +6,13 @@ import type {
 } from '../types/pipeline';
 
 /**
- * The only execution strategy shipped in this change: run the pure engine
- * synchronously on the calling thread and resolve. A worker or remote
- * implementation can replace this behind the same interface.
+ * Synchronous main-thread implementation. Delegates to the exact same pure
+ * `runPipeline` used by the worker and the worker-less fallback.
  */
 export function createLocalEngineClient(): EngineClient {
   return {
     async process(request: PipelineRequest): Promise<PipelineResult> {
-      return { grid: matchGrid(request.image, request.settings) };
+      return runPipeline(request);
     },
   };
 }

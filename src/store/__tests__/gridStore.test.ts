@@ -4,7 +4,7 @@ import { getPalette } from '../../engine/palettes';
 import {
   DEFAULT_SETTINGS,
   type EngineClient,
-  type MatchedCell,
+  type MatchedGrid,
   type ShadingStateId,
   type SourceImage,
 } from '../../types/pipeline';
@@ -21,28 +21,43 @@ function image(width: number, height: number, seed = 0): SourceImage {
   return { width, height, data };
 }
 
+function makeGrid(
+  cols: number,
+  rows: number,
+  hash = `h${cols}x${rows}`,
+): MatchedGrid {
+  const count = cols * rows;
+  const ri = new Uint8Array(count);
+  const gi = new Uint8Array(count);
+  const bi = new Uint8Array(count);
+  const target = new Uint8ClampedArray(count * 3);
+  for (let i = 0; i < count; i += 1) {
+    ri[i] = (i % 5) as ShadingStateId;
+    gi[i] = ((i + 1) % 5) as ShadingStateId;
+    bi[i] = ((i + 2) % 5) as ShadingStateId;
+    target[i * 3] = 10;
+    target[i * 3 + 1] = 20;
+    target[i * 3 + 2] = 30;
+  }
+  return {
+    cols,
+    rows,
+    ri,
+    gi,
+    bi,
+    deltaE: new Float32Array(count).fill(1.5),
+    target,
+    palette: getPalette('reflective'),
+    sourceHash: hash,
+  };
+}
+
 function fakeClient(): EngineClient {
   return {
     async process(request) {
       const cols = request.settings.cols;
       const rows = Math.max(8, Math.round(cols * (request.image.height / request.image.width)));
-      const cells: MatchedCell[] = Array.from({ length: cols * rows }, (_, i) => ({
-        ri: (i % 5) as ShadingStateId,
-        gi: ((i + 1) % 5) as ShadingStateId,
-        bi: ((i + 2) % 5) as ShadingStateId,
-        rgb: [10, 20, 30],
-        srgb: [40, 50, 60],
-        deltaE: 1.5,
-      }));
-      return {
-        grid: {
-          cols,
-          rows,
-          cells,
-          palette: getPalette(request.settings.palette),
-          sourceHash: `h${cols}x${rows}-${request.image.data.length}`,
-        },
-      };
+      return { grid: makeGrid(cols, rows, `h${cols}x${rows}-${request.image.data.length}`) };
     },
   };
 }
@@ -232,5 +247,108 @@ describe('createGridStore', () => {
 
     await store.setCols(400);
     expect(store.getState().settings.cols).toBe(96);
+  });
+
+  it('tracks pending and idle pipeline status and a monotonic latestJobId', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    expect(store.getState().status).toBe('idle');
+    expect(store.getState().latestJobId).toBe(0);
+
+    const loading = store.loadImage(image(320, 240));
+    expect(store.getState().status).toBe('pending');
+    const firstJobId = store.getState().latestJobId;
+    expect(firstJobId).toBeGreaterThan(0);
+
+    await loading;
+    expect(store.getState().status).toBe('idle');
+    expect(store.getState().latestJobId).toBeGreaterThanOrEqual(firstJobId);
+
+    await store.setCols(64);
+    expect(store.getState().status).toBe('idle');
+    expect(store.getState().latestJobId).toBeGreaterThan(firstJobId);
+  });
+
+  it('keeps the last good grid and surfaces an error when a run fails', async () => {
+    let calls = 0;
+    const flaky: EngineClient = {
+      async process(request) {
+        calls += 1;
+        if (calls > 1) throw new Error('worker crashed');
+        const cols = request.settings.cols;
+        return { grid: makeGrid(cols, 42, 'good') };
+      },
+    };
+    const store = createGridStore({ client: flaky, storage: new MemoryStorage() });
+    await store.loadImage(image(320, 240));
+    const goodGrid = store.getState().grid;
+    expect(goodGrid).not.toBeNull();
+
+    await store.setCols(64);
+    const state = store.getState();
+    expect(state.grid).toBe(goodGrid);
+    expect(state.status).toBe('error');
+    expect(state.error).toContain('worker crashed');
+  });
+
+  it('prepares the working bitmap once per image, bounded to 512 px', async () => {
+    const seen: Array<{ width: number; height: number }> = [];
+    const recording: EngineClient = {
+      async process(request) {
+        seen.push({ width: request.image.width, height: request.image.height });
+        return { grid: makeGrid(request.settings.cols, 12, 'bounded') };
+      },
+    };
+    const store = createGridStore({ client: recording, storage: new MemoryStorage() });
+    const photo: SourceImage = {
+      width: 4032,
+      height: 3024,
+      data: new Uint8ClampedArray(4032 * 3024 * 4),
+    };
+
+    await store.loadImage(photo);
+    expect(seen[0]).toEqual({ width: 512, height: 384 });
+
+    await store.setCols(64);
+    expect(seen[1]).toEqual({ width: 512, height: 384 });
+    expect(seen).toHaveLength(2);
+  });
+
+  it('invalidates client work when a new image is loaded', async () => {
+    let invalidations = 0;
+    const client: EngineClient = {
+      ...fakeClient(),
+      invalidate() {
+        invalidations += 1;
+      },
+    };
+    const store = createGridStore({ client, storage: new MemoryStorage() });
+
+    await store.loadImage(image(320, 240));
+    expect(invalidations).toBe(1);
+    await store.loadImage(image(160, 120, 17));
+    expect(invalidations).toBe(2);
+  });
+
+  it('tracks the last pointer type and clamps export options', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    expect(store.getState().lastPointerType).toBe('mouse');
+    store.setLastPointerType('touch');
+    expect(store.getState().lastPointerType).toBe('touch');
+    store.setLastPointerType('pen');
+    expect(store.getState().lastPointerType).toBe('pen');
+
+    expect(store.getState().exportOptions).toEqual({
+      pageSize: 'a4',
+      includeTemplate: false,
+      templateCellMm: 6,
+    });
+    store.setExportOptions({ pageSize: 'letter', includeTemplate: true, templateCellMm: 99 });
+    expect(store.getState().exportOptions).toEqual({
+      pageSize: 'letter',
+      includeTemplate: true,
+      templateCellMm: 12,
+    });
+    store.setExportOptions({ templateCellMm: 1 });
+    expect(store.getState().exportOptions.templateCellMm).toBe(4);
   });
 });

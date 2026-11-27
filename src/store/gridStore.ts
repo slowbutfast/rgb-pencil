@@ -1,16 +1,23 @@
+import { prepareWorkingBitmap } from '../engine/workingBitmap';
 import {
   MAX_COLS,
   MAX_CONTRAST,
+  MAX_TEMPLATE_MM,
   MIN_COLS,
   MIN_CONTRAST,
+  MIN_TEMPLATE_MM,
+  DEFAULT_EXPORT_OPTIONS,
   DEFAULT_SETTINGS,
   cellKey,
   parseCellKey,
   type CellCoord,
   type EngineClient,
+  type ExportOptions,
   type MatchedGrid,
   type PaletteKey,
   type PipelineSettings,
+  type PipelineStatus,
+  type PointerType,
   type SourceImage,
   type ViewMode,
 } from '../types/pipeline';
@@ -35,6 +42,11 @@ export interface GridStoreState {
   viewMode: ViewMode;
   hoveredCell: CellCoord | null;
   completedCells: ReadonlySet<string>;
+  status: PipelineStatus;
+  error: string | null;
+  latestJobId: number;
+  lastPointerType: PointerType;
+  exportOptions: ExportOptions;
 }
 
 export interface GridStore {
@@ -47,6 +59,8 @@ export interface GridStore {
   setDither(dither: boolean): Promise<void>;
   setViewMode(mode: ViewMode): void;
   setHovered(cell: CellCoord | null): void;
+  setLastPointerType(type: PointerType): void;
+  setExportOptions(patch: Partial<ExportOptions>): void;
   toggleCell(col: number, row: number): void;
   paintCell(col: number, row: number, done: boolean): void;
   resetCompleted(): void;
@@ -69,6 +83,10 @@ function isInside(grid: MatchedGrid, coord: CellCoord): boolean {
   return coord.col >= 0 && coord.col < grid.cols && coord.row >= 0 && coord.row < grid.rows;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Framework-free observable store for grid state and drawing progress. */
 export function createGridStore(options: GridStoreOptions): GridStore {
   const client = options.client;
@@ -85,6 +103,11 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     viewMode: 'grid',
     hoveredCell: null,
     completedCells: new Set<string>(),
+    status: 'idle',
+    error: null,
+    latestJobId: 0,
+    lastPointerType: 'mouse',
+    exportOptions: { ...DEFAULT_EXPORT_OPTIONS },
   };
 
   function readStorage(key: string): string | null {
@@ -156,18 +179,24 @@ export function createGridStore(options: GridStoreOptions): GridStore {
   async function recompute(restore: boolean): Promise<void> {
     if (!source) return;
     const token = ++jobToken;
-    const result = await client.process({ image: source, settings: { ...state.settings } });
-    if (token !== jobToken || !source) return;
+    setState({ status: 'pending', latestJobId: token, error: null });
+    try {
+      const result = await client.process({ image: source, settings: { ...state.settings } });
+      if (token !== jobToken || !source) return;
 
-    const grid = result.grid;
-    let completed = sanitizeCompleted(state.completedCells, grid);
-    if (restore) {
-      const restored = restoredFor(grid);
-      if (restored) completed = restored;
+      const grid = result.grid;
+      let completed = sanitizeCompleted(state.completedCells, grid);
+      if (restore) {
+        const restored = restoredFor(grid);
+        if (restored) completed = restored;
+      }
+
+      setState({ grid, completedCells: completed, status: 'idle', error: null });
+      persist();
+    } catch (error) {
+      if (token !== jobToken) return;
+      setState({ status: 'error', error: errorMessage(error) });
     }
-
-    setState({ grid, completedCells: completed });
-    persist();
   }
 
   async function updateSettings(patch: Partial<PipelineSettings>): Promise<void> {
@@ -188,8 +217,15 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     },
 
     async loadImage(image) {
-      source = image;
-      setState({ completedCells: new Set<string>() });
+      source = prepareWorkingBitmap(image);
+      jobToken += 1;
+      client.invalidate?.();
+      setState({
+        completedCells: new Set<string>(),
+        latestJobId: jobToken,
+        status: 'pending',
+        error: null,
+      });
       await recompute(true);
     },
 
@@ -226,6 +262,21 @@ export function createGridStore(options: GridStoreOptions): GridStore {
       if (current && cell && current.col === cell.col && current.row === cell.row) return;
       if (!current && !cell) return;
       setState({ hoveredCell: cell });
+    },
+
+    setLastPointerType(type) {
+      if (type === state.lastPointerType) return;
+      setState({ lastPointerType: type });
+    },
+
+    setExportOptions(patch) {
+      const next: ExportOptions = { ...state.exportOptions, ...patch };
+      next.templateCellMm = clamp(
+        Math.round(next.templateCellMm),
+        MIN_TEMPLATE_MM,
+        MAX_TEMPLATE_MM,
+      );
+      setState({ exportOptions: next });
     },
 
     toggleCell(col, row) {

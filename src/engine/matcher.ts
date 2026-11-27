@@ -1,15 +1,15 @@
-import { buildComboLUT, linearRgbToLab, srgbToLinear, type Lab } from './colorMath';
+import { buildComboLUT, buildLabTable, linearRgbToLab, srgbToLinear, type Lab } from './colorMath';
 import { buildContrastLUT } from './contrast';
 import { getPalette } from './palettes';
 import {
-  DARK_BORDER_RATIO,
   MAX_COLS,
   MIN_COLS,
   type ComboLUTEntry,
   type MatchedCell,
   type MatchedGrid,
+  type PencilPalette,
   type PipelineSettings,
-  type Rgb,
+  type ShadingStateId,
   type SourceImage,
 } from '../types/pipeline';
 
@@ -123,30 +123,61 @@ function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
-function nearestCombo(lut: readonly ComboLUTEntry[], target: Lab): {
-  combo: ComboLUTEntry;
-  distanceSquared: number;
-} {
-  let best = lut[0]!;
+function nearestComboIndex(
+  table: Float32Array,
+  target: Lab,
+): { index: number; distanceSquared: number } {
+  let bestIndex = 0;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < lut.length; i += 1) {
-    const candidate = lut[i]!;
-    const dL = target[0] - candidate.lab[0];
-    const da = target[1] - candidate.lab[1];
-    const db = target[2] - candidate.lab[2];
+  const candidates = table.length / 3;
+  for (let i = 0; i < candidates; i += 1) {
+    const dL = target[0] - table[i * 3]!;
+    const da = target[1] - table[i * 3 + 1]!;
+    const db = target[2] - table[i * 3 + 2]!;
     const distance = dL * dL + da * da + db * db;
     if (distance < bestDistance) {
       bestDistance = distance;
-      best = candidate;
+      bestIndex = i;
     }
   }
-  return { combo: best, distanceSquared: bestDistance };
+  return { index: bestIndex, distanceSquared: bestDistance };
+}
+
+const lutCache = new Map<string, ComboLUTEntry[]>();
+
+function lutFor(palette: PencilPalette): ComboLUTEntry[] {
+  const cached = lutCache.get(palette.key);
+  if (cached) return cached;
+  const lut = buildComboLUT(palette);
+  lutCache.set(palette.key, lut);
+  return lut;
+}
+
+/**
+ * Read one cell of the flat grid as a derived view. `rgb` is the
+ * contrast-boosted target; `srgb` is the optical mix of the matched stripes.
+ */
+export function readMatchedCell(grid: MatchedGrid, col: number, row: number): MatchedCell | null {
+  if (col < 0 || col >= grid.cols || row < 0 || row >= grid.rows) return null;
+  const index = row * grid.cols + col;
+  const ri = grid.ri[index] as ShadingStateId;
+  const gi = grid.gi[index] as ShadingStateId;
+  const bi = grid.bi[index] as ShadingStateId;
+  const combo = lutFor(grid.palette)[ri * 25 + gi * 5 + bi]!;
+  return {
+    ri,
+    gi,
+    bi,
+    rgb: [grid.target[index * 3]!, grid.target[index * 3 + 1]!, grid.target[index * 3 + 2]!],
+    srgb: combo.srgb,
+    deltaE: grid.deltaE[index]!,
+  };
 }
 
 /**
  * Full optical-mixing pass: area-average downsample, contrast boost, CIELAB
  * ΔE76 match against the 125-combo LUT, and optional Floyd–Steinberg error
- * diffusion in linear RGB.
+ * diffusion in linear RGB. Repeated pixels reuse a precomputed flat Lab table.
  */
 export function matchGrid(image: SourceImage, settings: PipelineSettings): MatchedGrid {
   assertSettings(settings);
@@ -159,15 +190,16 @@ export function matchGrid(image: SourceImage, settings: PipelineSettings): Match
   const sourceHash = fingerprint(downsampled, cols, rows);
 
   const palette = getPalette(settings.palette);
-  const lut = buildComboLUT(palette, DARK_BORDER_RATIO);
+  const lut = lutFor(palette);
+  const labTable = buildLabTable(lut);
   const contrastLUT = buildContrastLUT(settings.contrast);
 
   const linear = new Float32Array(count * 3);
-  const boosted = new Uint8ClampedArray(count * 3);
+  const target = new Uint8ClampedArray(count * 3);
   for (let i = 0; i < count; i += 1) {
     for (let channel = 0; channel < 3; channel += 1) {
       const value = contrastLUT[downsampled[i * 3 + channel]!]!;
-      boosted[i * 3 + channel] = value;
+      target[i * 3 + channel] = value;
       linear[i * 3 + channel] = srgbToLinear(value);
     }
   }
@@ -176,7 +208,10 @@ export function matchGrid(image: SourceImage, settings: PipelineSettings): Match
     ? Math.max(0, Math.min(1, settings.ditherStrength))
     : 0;
 
-  const cells: MatchedCell[] = new Array(count);
+  const riOut = new Uint8Array(count);
+  const giOut = new Uint8Array(count);
+  const biOut = new Uint8Array(count);
+  const deltaEOut = new Float32Array(count);
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
@@ -185,16 +220,16 @@ export function matchGrid(image: SourceImage, settings: PipelineSettings): Match
       const targetG = clamp01(linear[i * 3 + 1]!);
       const targetB = clamp01(linear[i * 3 + 2]!);
 
-      const { combo, distanceSquared } = nearestCombo(lut, linearRgbToLab(targetR, targetG, targetB));
+      const { index, distanceSquared } = nearestComboIndex(
+        labTable,
+        linearRgbToLab(targetR, targetG, targetB),
+      );
+      const combo = lut[index]!;
 
-      cells[i] = {
-        ri: combo.ri,
-        gi: combo.gi,
-        bi: combo.bi,
-        rgb: [boosted[i * 3]!, boosted[i * 3 + 1]!, boosted[i * 3 + 2]!] as Rgb,
-        srgb: combo.srgb,
-        deltaE: Math.sqrt(distanceSquared),
-      };
+      riOut[i] = combo.ri;
+      giOut[i] = combo.gi;
+      biOut[i] = combo.bi;
+      deltaEOut[i] = Math.sqrt(distanceSquared);
 
       if (ditherStrength > 0) {
         const errorR = (targetR - combo.lin[0]) * ditherStrength;
@@ -203,10 +238,10 @@ export function matchGrid(image: SourceImage, settings: PipelineSettings): Match
 
         const spread = (x: number, y: number, weight: number): void => {
           if (x < 0 || x >= cols || y < 0 || y >= rows) return;
-          const target = (y * cols + x) * 3;
-          linear[target] = linear[target]! + errorR * weight;
-          linear[target + 1] = linear[target + 1]! + errorG * weight;
-          linear[target + 2] = linear[target + 2]! + errorB * weight;
+          const targetIndex = (y * cols + x) * 3;
+          linear[targetIndex] = linear[targetIndex]! + errorR * weight;
+          linear[targetIndex + 1] = linear[targetIndex + 1]! + errorG * weight;
+          linear[targetIndex + 2] = linear[targetIndex + 2]! + errorB * weight;
         };
 
         spread(col + 1, row, 7 / 16);
@@ -220,7 +255,11 @@ export function matchGrid(image: SourceImage, settings: PipelineSettings): Match
   return {
     cols,
     rows,
-    cells,
+    ri: riOut,
+    gi: giOut,
+    bi: biOut,
+    deltaE: deltaEOut,
+    target,
     palette,
     sourceHash,
   };
