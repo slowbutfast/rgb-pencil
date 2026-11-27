@@ -1,0 +1,716 @@
+/* Component styles for the Minimalist Studio Blank-Canvas shell. */
+
+* { box-sizing: border-box; }
+
+/* Dynamic controls toggle the `hidden` attribute; author display rules such as
+   `.btn { display: inline-flex }` must not keep them rendered. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Two-column Minimalist Shell: Blank Canvas + Fixed Right Inspector */
+.shell {
+  display: grid;
+  grid-template-columns: 1fr var(--sidebar-w);
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Left Blank Canvas Stage */
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px 36px;
+  overflow: auto;
+  min-width: 0;
+}
+
+.stage.dragover::after {
+  content: 'Drop image to load grid';
+  position: absolute;
+  inset: 16px;
+  border: 2px dashed var(--ink);
+  border-radius: 16px;
+  background: var(--canvas-drop-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  font-weight: 500;
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* Whisper-Quiet Floating Top Bar (confined to canvas area) */
+.top-bar {
+  position: absolute;
+  top: var(--pill-inset-top);
+  left: var(--pill-inset-x);
+  right: var(--pill-inset-x);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-pill);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  padding: var(--space-xs) 6px;
+  pointer-events: auto;
+  box-shadow: var(--shadow-pill);
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 6px 11px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--transition-control), color var(--transition-control);
+}
+
+.btn:hover { background: var(--surface-subtle); }
+.btn.primary { background: var(--ink); color: var(--on-ink); }
+.btn.primary:hover { background: var(--ink-hover); }
+.btn.active { background: var(--surface-active); font-weight: 600; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn:focus-visible,
+.sample-chip:focus-visible,
+.settings-popover input:focus-visible,
+.settings-popover select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.divider {
+  width: 1px;
+  height: 15px;
+  background: var(--line);
+  margin: 0 2px;
+}
+
+.progress-readout {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  padding: 0 var(--space-sm);
+}
+
+/* Collapsible Settings Popover (anchored to canvas top-right) */
+.settings-popover {
+  position: absolute;
+  top: 62px;
+  right: var(--pill-inset-x);
+  width: var(--popover-w);
+  background: var(--surface-popover);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-popover);
+  z-index: 60;
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-popover.open { display: flex; }
+
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.setting-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.setting-head span:last-child {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.settings-popover input[type="range"] {
+  width: 100%;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-popover select {
+  width: 100%;
+  padding: 6px var(--space-sm);
+  border-radius: var(--space-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.toggle-line input { accent-color: var(--ink); cursor: pointer; }
+
+.sample-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.sample-chip {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: var(--space-sm);
+  padding: 5px var(--space-xs);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.sample-chip.active, .sample-chip:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* Grid Canvas */
+.grid-frame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+#gridCanvas {
+  display: block;
+  cursor: crosshair;
+  background: transparent;
+}
+
+.corner-hint {
+  position: absolute;
+  bottom: 14px;
+  left: var(--pill-inset-x);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+/* Right Minimalist Inspector Sidebar (Never overlaps grid) */
+.inspector-sidebar {
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  padding: var(--space-lg) var(--pill-inset-x);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.sidebar-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.empty-state {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.inspector-active {
+  display: none;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.inspector-active.visible {
+  display: flex;
+}
+
+.coord-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.coord-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.status-pill {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--status-todo-bg);
+  color: var(--status-todo-text);
+}
+
+.status-pill.done {
+  background: var(--status-done-bg);
+  color: var(--status-done-text);
+}
+
+/* Large Visual 3-Stripe Swatch */
+.stripe-card {
+  background: var(--swatch-stage);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stripe-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-xs);
+  height: 84px;
+}
+
+.stripe-bar {
+  border-radius: var(--radius-xs);
+  transition: background-color var(--transition-stripe);
+}
+
+.stripe-compare {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--on-swatch-stage);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--swatch-hairline);
+}
+
+.swatch-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--swatch-border);
+  display: inline-block;
+}
+
+/* 3 Stripe Values List */
+.stripe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stripe-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--space-sm) 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.ch-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-ink);
+  flex-shrink: 0;
+}
+
+.ch-dot.R { background: var(--ch-red); }
+.ch-dot.G { background: var(--ch-green); }
+.ch-dot.B { background: var(--ch-blue); }
+
+.state-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.state-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.state-sub {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.meta-footer {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Legend Footer in Sidebar */
+.sidebar-legend {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.legend-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.legend-sym {
+  font-family: var(--font-mono);
+  width: 14px;
+  text-align: center;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.upload-input { display: none; }
+
+/* Save status + single-line banners below the top pills (never over the grid) */
+.save-status {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  padding: 0 var(--space-xs);
+  white-space: nowrap;
+}
+
+.save-status.warning {
+  color: var(--ch-red);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.banner-stack {
+  position: static;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.banner-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: min(560px, 100%);
+  padding: 4px var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--surface-pill);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pill);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  pointer-events: auto;
+}
+
+/* Save failures need the full message (including the delete/export advice). */
+.banner[data-banner-id="save-error"] {
+  width: 100%;
+  max-width: 100%;
+  align-items: flex-start;
+}
+
+.banner[data-banner-id="save-error"] > span {
+  flex: 1 1 auto;
+  white-space: normal;
+}
+
+.banner-action,
+.banner-dismiss {
+  padding: 0 var(--space-xs);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.banner-dismiss {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* Projects section inside the existing Settings popover */
+.projects-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--line);
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.project-empty {
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.project-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.project-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 100px;
+}
+
+.project-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-meta {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+
+.project-row-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.project-action {
+  padding: 2px 6px;
+  font-size: 0.68rem;
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.project-actions .btn {
+  border: 1px solid var(--line-strong);
+  font-size: 0.7rem;
+  padding: 4px var(--space-sm);
+}
+
+.project-status,
+.inline-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.project-status[hidden],
+.inline-confirm[hidden] {
+  display: none !important;
+}
+
+.inline-confirm {
+  flex: 1 1 100%;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.inline-confirm input[type="text"] {
+  flex: 1 1 90px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.settings-lock-caption {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.settings-lock-caption[hidden] {
+  display: none !important;
+}
+
+/* Mobile / Narrow Portrait: stacked canvas + bottom inspector sheet */
+@media (max-width: 767px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .stage {
+    padding: 112px 12px 12px;
+  }
+
+  .top-bar {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px;
+  }
+
+  .pill-group {
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    min-width: var(--touch-min);
+    min-height: var(--touch-min);
+    justify-content: center;
+  }
+
+  .sample-chip {
+    min-height: var(--touch-min);
+  }
+
+  .settings-popover {
+    top: 60px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+
+  .corner-hint {
+    display: none;
+  }
+
+  .inspector-sidebar {
+    height: auto;
+    max-height: 44vh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    padding: 14px var(--space-md);
+    gap: var(--space-md);
+  }
+
+  .stripe-preview {
+    height: 64px;
+  }
+
+  .sidebar-legend {
+    padding-top: 10px;
+  }
+}
