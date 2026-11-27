@@ -98,7 +98,7 @@ describe('autosave', () => {
       events: new EventTarget(),
     });
 
-    const first = scheduler.flush();
+    const first = scheduler.flush(true);
     await Promise.resolve();
     scheduler.schedule();
     const second = scheduler.flush();
@@ -132,6 +132,34 @@ describe('autosave', () => {
     scheduler.schedule();
     await vi.advanceTimersByTimeAsync(500);
     expect(statuses.at(-1)).toEqual({ status: 'memory-only', error: null });
+    scheduler.dispose();
+  });
+
+  it('does not write on visibility or pagehide when nothing is dirty', async () => {
+    const { save, scheduler, events } = harness();
+    events.dispatchEvent(new Event('visibilitychange'));
+    events.dispatchEvent(new Event('pagehide'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(save).not.toHaveBeenCalled();
+    expect(scheduler.status()).toBe('idle');
+    scheduler.dispose();
+  });
+
+  it('flushes a pending change on pagehide exactly once without force', async () => {
+    const { save, scheduler, events } = harness();
+    scheduler.schedule();
+    events.dispatchEvent(new Event('pagehide'));
+    events.dispatchEvent(new Event('pagehide'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(save).toHaveBeenCalledTimes(1);
+    scheduler.dispose();
+  });
+
+  it('flush(true) forces a write when clean', async () => {
+    const { save, scheduler, statuses } = harness();
+    await scheduler.flush(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(statuses.at(-1)).toEqual({ status: 'saved', error: null });
     scheduler.dispose();
   });
 

@@ -2,6 +2,8 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'memory-only';
 
 export interface SaveOutcome {
   ok: boolean;
+  /** Nothing was written (for example, a read-only tab); keep the status. */
+  skipped?: boolean;
   /** Storage is unavailable: the in-memory state is the only copy. */
   memoryOnly?: boolean;
   message?: string;
@@ -76,6 +78,7 @@ export function createAutosave(options: AutosaveOptions): Autosave {
       };
     }
 
+    if (outcome.skipped) return;
     if (outcome.ok && outcome.memoryOnly) setStatus('memory-only', null);
     else if (outcome.ok) setStatus('saved', null);
     else setStatus('error', outcome.message ?? 'Saving failed');
@@ -113,11 +116,14 @@ export function createAutosave(options: AutosaveOptions): Autosave {
 
   function flush(force = false): Promise<void> {
     if (disposed) return Promise.resolve();
-    // `force` is accepted for callers that want to express intent; a flush is
-    // always a write so lifecycle hooks cannot silently skip a pending save.
-    if (force || !dirty) dirty = true;
-    dirty = true;
     clearTimer();
+    // A clean lifecycle flush is a no-op; it must not bump updatedAt.
+    if (!force && !dirty && !running) return Promise.resolve();
+    if (running) {
+      if (force || dirty) queued = true;
+      return chain;
+    }
+    dirty = true;
     return enqueue();
   }
 

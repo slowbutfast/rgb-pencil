@@ -571,8 +571,10 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     if (!db) {
       return { ok: true, memoryOnly: true };
     }
+    if (state.readOnly) {
+      return { ok: true, skipped: true };
+    }
     if (
-      state.readOnly ||
       !projectId ||
       suppressedProjectIds.has(projectId) ||
       !state.grid ||

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runPipeline } from '../../engine/pipeline';
 import { createGridStore, type GridStore } from '../gridStore';
 import type { LockManagerLike, ProjectChannel } from '../projectLock';
+import { acquireProjectLock } from '../projectLock';
 import type { ProjectDatabase } from '../projectDb';
 import { losslessCodec, memoryChannelHub, MemoryStorage, openTestDb, sampleBitmap } from './support';
 
@@ -62,6 +63,38 @@ class FakeLocks implements LockManagerLike {
 
   held(name: string): boolean {
     return this.owners.has(name);
+  }
+}
+
+/** Mirrors the browser: granting a steal aborts the previous owner's request. */
+class RevokingLocks implements LockManagerLike {
+  private readonly owners = new Map<string, { reject: (error: unknown) => void }>();
+
+  request(
+    name: string,
+    options: { ifAvailable?: boolean; steal?: boolean },
+    callback: (lock: unknown) => Promise<void>,
+  ): Promise<unknown> {
+    const existing = this.owners.get(name);
+    if (existing && !options.steal) {
+      return Promise.resolve(callback(null));
+    }
+
+    return new Promise((resolve, reject) => {
+      if (existing && options.steal) {
+        this.owners.delete(name);
+        const abort = new Error('The lock was stolen.');
+        abort.name = 'AbortError';
+        existing.reject(abort);
+      }
+      const entry = { reject };
+      this.owners.set(name, entry);
+      const release = (): void => {
+        if (this.owners.get(name) === entry) this.owners.delete(name);
+        resolve(undefined);
+      };
+      void Promise.resolve(callback({ name })).then(release, release);
+    });
   }
 }
 
@@ -289,5 +322,52 @@ describe('projectLock', () => {
     await vi.waitFor(() => expect(other.getState().projectId).toBeNull());
     expect(other.getState().banners.map((banner) => banner.id)).toContain('notice');
     expect(other.getState().grid).not.toBeNull();
+  });
+
+  it('goes read-only and calls onLost when a steal revoked the lock with no channel', async () => {
+    const locks = new RevokingLocks();
+    let lost = 0;
+    const first = await acquireProjectLock('project-revoked', {
+      locks,
+      channel: null,
+      onLost: () => {
+        lost += 1;
+      },
+    });
+    expect(first.readOnly).toBe(false);
+
+    const second = await acquireProjectLock('project-revoked', { locks, channel: null });
+    expect(second.readOnly).toBe(true);
+    await expect(second.takeOver()).resolves.toBe(true);
+    expect(second.readOnly).toBe(false);
+
+    await vi.waitFor(() => expect(first.readOnly).toBe(true));
+    expect(lost).toBe(1);
+    first.release();
+    second.release();
+  });
+
+  it('calls onLost exactly once when abort and lock-taken both arrive', async () => {
+    const locks = new RevokingLocks();
+    const hub = memoryChannelHub();
+    let lost = 0;
+    const first = await acquireProjectLock('project-abort', {
+      locks,
+      channel: hub.create(),
+      onLost: () => {
+        lost += 1;
+      },
+    });
+    const second = await acquireProjectLock('project-abort', {
+      locks,
+      channel: hub.create(),
+    });
+
+    await expect(second.takeOver()).resolves.toBe(true);
+    await vi.waitFor(() => expect(first.readOnly).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lost).toBe(1);
+    first.release();
+    second.release();
   });
 });

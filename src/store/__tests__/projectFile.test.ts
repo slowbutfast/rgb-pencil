@@ -273,6 +273,84 @@ describe('projectFile', () => {
     expect([...memory.getState().completedCells].sort()).toEqual(['1,1', '2,2']);
   });
 
+  it('rejects a PNG whose IHDR declares dimensions beyond the cap without decoding', async () => {
+    const valid = await payloadForRejection();
+    const decode = vi.fn(async () => {
+      throw new Error('decode should not run');
+    });
+    const result = await parseProjectFile(
+      fileLike(
+        JSON.stringify({
+          ...valid,
+          bitmap: { ...valid.bitmap, png: pngWithIhdr(30000, 30000) },
+        }),
+      ),
+      { ...codec, decode },
+      { id: 'ihdr-cap', now: 10, existingNames: [] },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/1024|large/i);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it('rejects an IHDR that disagrees with the declared bitmap size', async () => {
+    const valid = await payloadForRejection();
+    const result = await parseProjectFile(
+      fileLike(
+        JSON.stringify({
+          ...valid,
+          bitmap: { ...valid.bitmap, width: 40, height: 30, png: pngWithIhdr(32, 24) },
+        }),
+      ),
+      codec,
+      { id: 'ihdr-mismatch', now: 10, existingNames: [] },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/match|dimension/i);
+  });
+
+  it('rejects a non-PNG signature at the IHDR guard', async () => {
+    const valid = await payloadForRejection();
+    const decode = vi.fn(
+      async () => ({ width: 32, height: 24, data: new Uint8ClampedArray(32 * 24 * 4) }),
+    );
+    const result = await parseProjectFile(
+      fileLike(
+        JSON.stringify({
+          ...valid,
+          bitmap: { ...valid.bitmap, png: bytesToBase64(new Uint8Array(64).fill(7)) },
+        }),
+      ),
+      { ...codec, decode },
+      { id: 'not-png', now: 10, existingNames: [] },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/png/i);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it('sourceHash must be 1-8 hex characters', async () => {
+    const valid = await payloadForRejection();
+    const options = { id: 'hash-check', now: 10, existingNames: [] };
+    for (const bad of ['', 'zz', '123456789']) {
+      const result = await parseProjectFile(
+        fileLike(JSON.stringify({ ...valid, sourceHash: bad })),
+        codec,
+        options,
+      );
+      expect(result.ok, `sourceHash ${JSON.stringify(bad)}`).toBe(false);
+      if (!result.ok) expect(result.message).toMatch(/hash/i);
+    }
+
+    const accepted = await parseProjectFile(
+      fileLike(JSON.stringify({ ...valid, sourceHash: 'deadbeef' })),
+      codec,
+      options,
+    );
+    expect(accepted.ok).toBe(true);
+    if (accepted.ok) expect(accepted.project.sourceHash).toBe('deadbeef');
+  });
+
   it('exports from in-memory state when storage is unavailable', async () => {
     const store = makeStore(null);
     await store.loadImage(sampleBitmap(32, 24, 10), { name: 'memory.png' });
@@ -293,6 +371,21 @@ describe('projectFile', () => {
     }
   });
 });
+
+/** Valid PNG signature + IHDR chunk carrying the given dimensions. */
+function pngWithIhdr(width: number, height: number): string {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  bytes[24] = 8;
+  bytes[25] = 6;
+  view.setUint32(29, 0);
+  return bytesToBase64(bytes);
+}
 
 async function encodeBitmap(bitmap: ReturnType<typeof sampleBitmap>): Promise<string> {
   const blob = await codec.encode(bitmap);

@@ -153,6 +153,20 @@ export async function acquireProjectLock(
   }
 
   let activeHold: LockHold | null = null;
+  let lostNotified = false;
+
+  const notifyLost = (): void => {
+    if (lostNotified || released) return;
+    lostNotified = true;
+    readOnly = true;
+    const hold = activeHold;
+    activeHold = null;
+    hold?.resolve();
+    const notify = onLost;
+    void Promise.resolve(notify ? notify() : undefined).finally(() => {
+      options.channel?.post({ type: 'lock-released', id: projectId, tabId: ownTab });
+    });
+  };
 
   const decided = deferred<boolean>();
 
@@ -170,9 +184,15 @@ export async function acquireProjectLock(
       await hold.promise;
     });
     // The owning callback intentionally never settles until release; avoid an
-    // unhandled rejection if the browser aborts the request later.
+    // unhandled rejection if the browser aborts the request later. A post-grant
+    // AbortError means another tab stole the lock, so this tab must stop
+    // writing even if no BroadcastChannel message arrives.
     void Promise.resolve(request).catch(() => {
-      decided.resolve(false);
+      if (activeHold) {
+        notifyLost();
+      } else {
+        decided.resolve(false);
+      }
     });
   } catch {
     decided.resolve(false);
@@ -183,14 +203,7 @@ export async function acquireProjectLock(
 
   const unsubscribe = options.channel?.subscribe((message) => {
     if (message.type === 'lock-taken' && message.id === projectId && message.tabId !== ownTab) {
-      readOnly = true;
-      const hold = activeHold;
-      activeHold = null;
-      hold?.resolve();
-      const notify = onLost;
-      void Promise.resolve(notify ? notify() : undefined).finally(() => {
-        options.channel?.post({ type: 'lock-released', id: projectId, tabId: ownTab });
-      });
+      notifyLost();
     }
     if (
       message.type === 'lock-released' &&

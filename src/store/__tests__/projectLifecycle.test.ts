@@ -491,4 +491,38 @@ describe('project lifecycle', () => {
     const untouched = await db.get('future');
     expect(untouched).toMatchObject({ ok: false, reason: 'newer-schema' });
   });
+
+  it('read-only flush leaves saveStatus unchanged and writes nothing', async () => {
+    const db = await makeDb();
+    const image = sampleBitmap(32, 24, 31);
+    const first = makeStore(db);
+    await first.store.loadImage(image, { name: 'read-only.png' });
+    first.store.toggleCell(1, 1);
+    await first.store.flushNow();
+    const projectId = first.store.getState().projectId!;
+    first.store.dispose();
+    stores.splice(stores.indexOf(first.store), 1);
+
+    const denyLocks = {
+      async request(
+        _name: string,
+        _options: { ifAvailable?: boolean; steal?: boolean },
+        callback: (lock: unknown) => Promise<void>,
+      ): Promise<unknown> {
+        await callback(null);
+        return undefined;
+      },
+    };
+
+    const viewer = makeStore(db, { locks: denyLocks }).store;
+    await expect(viewer.resumeLastProject()).resolves.toBe(true);
+    expect(viewer.getState().projectId).toBe(projectId);
+    expect(viewer.getState().readOnly).toBe(true);
+
+    const statusBefore = viewer.getState().saveStatus;
+    const put = vi.spyOn(db, 'put');
+    await viewer.flushNow();
+    expect(put).not.toHaveBeenCalled();
+    expect(viewer.getState().saveStatus).toBe(statusBefore);
+  });
 });

@@ -102,6 +102,25 @@ async function blobBytes(blob: Blob): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/**
+ * Read the dimensions from a PNG's IHDR chunk without decoding the image, so
+ * a small, highly compressible file cannot force a huge canvas allocation.
+ */
+function readPngIhdr(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24) return null;
+  for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
+    if (bytes[i] !== PNG_SIGNATURE[i]) return null;
+  }
+  // The first chunk of a valid PNG must be IHDR.
+  if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) {
+    return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
 /** Assemble the backup payload from the live project state. */
 export async function buildProjectFile(input: {
   record: ProjectRecord;
@@ -226,8 +245,11 @@ export async function parseProjectFile(
   if (typeof settings.dither !== 'boolean') {
     return { ok: false, message: 'Project dither flag is invalid.' };
   }
-  if (typeof parsed.sourceHash !== 'string') {
+  if (typeof parsed.sourceHash !== 'string' || parsed.sourceHash.length === 0) {
     return { ok: false, message: 'Project source hash is missing.' };
+  }
+  if (!/^[0-9a-f]{1,8}$/.test(parsed.sourceHash)) {
+    return { ok: false, message: 'Project source hash is invalid.' };
   }
   if (typeof parsed.completed !== 'string') {
     return { ok: false, message: 'The completed-cell bitset is missing.' };
@@ -266,6 +288,18 @@ export async function parseProjectFile(
     return { ok: false, message: 'The bitmap PNG is not valid base64.' };
   }
   const png = new Blob([pngBytes as unknown as BlobPart], { type: 'image/png' });
+
+  // Tie the declared dimensions to the PNG header before any decode work.
+  const header = readPngIhdr(pngBytes);
+  if (!header) {
+    return { ok: false, message: 'The bitmap data is not a decodable PNG.' };
+  }
+  if (Math.max(header.width, header.height) > MAX_BITMAP_EDGE) {
+    return { ok: false, message: "The bitmap's longest edge must be 1024 px or less." };
+  }
+  if (header.width !== width || header.height !== height) {
+    return { ok: false, message: 'The bitmap dimensions do not match the PNG.' };
+  }
 
   let decoded: WorkingBitmap;
   try {

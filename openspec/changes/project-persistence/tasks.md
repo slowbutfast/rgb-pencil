@@ -52,3 +52,13 @@
 
 - [x] 8.1 Run full regression test suite (`npm test`) and `npm run build`; verify clean passes and check for metric/data regressions (including recorded PNG size)
 - [x] 8.2 Populate verification.md with Requirement Adherence Matrix, resolved assumptions (Safari eviction, PNG size, `pagehide` commit, quota), and verbatim execution logs
+
+## Patch 06: PR #1 review hardening
+
+- [x] P06.1 Scaffold and run reproducing tests (oversized-IHDR import, `sourceHash` format, steal-abort without channel, clean-flush no-op, read-only status) and confirm they fail
+- [x] P06.2 Add the PNG IHDR guard and `sourceHash` format check in `src/store/projectFile.ts`
+- [x] P06.3 Handle post-grant `AbortError` in `src/store/projectLock.ts` (read-only, `onLost` exactly once)
+- [x] P06.4 Honour `force` in `src/store/autosave.ts#flush` and add `skipped` outcome handling (`autosave.ts`, `gridStore.ts#persistCurrent`)
+- [x] P06.5 Add MODIFIED persistence requirement delta and apply the same text to `openspec/specs/interactive-pixel-grid/spec.md`
+- [x] P06.6 Verify reproduction tests pass; run full regression suite, build, and `openspec validate project-persistence --strict`
+- [x] P06.7 Update verification.md and mark PATCH-06 resolved in patch.md

@@ -27,24 +27,37 @@ export function sampleBitmap(width = 32, height = 24, seed = 0): WorkingBitmap {
   return { width, height, data };
 }
 
+/**
+ * The test codec's "PNG" keeps the real signature and IHDR chunk so import
+ * validation can read dimensions from the header, followed by raw RGBA.
+ */
+const FAKE_PNG_HEADER_BYTES = 33;
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
 function toBytes(image: WorkingBitmap): Uint8Array {
-  const header = new Uint8Array(8);
+  const header = new Uint8Array(FAKE_PNG_HEADER_BYTES);
+  header.set(PNG_SIGNATURE, 0);
   const view = new DataView(header.buffer);
-  view.setUint32(0, image.width, true);
-  view.setUint32(4, image.height, true);
-  const bytes = new Uint8Array(8 + image.data.length);
+  view.setUint32(8, 13);
+  header.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, image.width);
+  view.setUint32(20, image.height);
+  header[24] = 8;
+  header[25] = 6;
+  view.setUint32(29, 0);
+  const bytes = new Uint8Array(header.length + image.data.length);
   bytes.set(header, 0);
-  bytes.set(image.data, 8);
+  bytes.set(image.data, header.length);
   return bytes;
 }
 
 export function bytesToBitmap(bytes: Uint8Array): WorkingBitmap {
-  if (bytes.length < 8) throw new Error('Undecodable PNG');
+  if (bytes.length < FAKE_PNG_HEADER_BYTES) throw new Error('Undecodable PNG');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const width = view.getUint32(0, true);
-  const height = view.getUint32(4, true);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
   if (width <= 0 || height <= 0) throw new Error('Undecodable PNG');
-  const data = bytes.slice(8);
+  const data = bytes.slice(FAKE_PNG_HEADER_BYTES);
   if (data.length !== width * height * 4) throw new Error('Undecodable PNG');
   return { width, height, data: new Uint8ClampedArray(data) };
 }

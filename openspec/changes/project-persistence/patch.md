@@ -9,6 +9,7 @@
 | `PATCH-03` | 2026-11-27 | Orchestrator Chromium layout measurement | `src/ui/topBar.ts`, `src/ui/gridCanvas.ts`, `src/styles/main.css`, `src/ui/__tests__/persistenceUi.test.ts` | APPLIED |
 | `PATCH-04` | 2026-11-27 | Independent verification (C1, W1, W3, W4, S2, S3, S7, W2, W5/S1) | `src/store/projectLock.ts`, `src/store/gridStore.ts`, `src/ui/topBar.ts`, `src/ui/settingsPopover.ts`, `src/main.ts`, `src/styles/main.css`, `src/store/__tests__/projectLock.test.ts`, `src/store/__tests__/projectLifecycle.test.ts`, `src/store/__tests__/projectFile.test.ts`, `src/ui/__tests__/persistenceUi.test.ts` | APPLIED |
 | `PATCH-05` | 2026-11-27 | Follow-up hardening | `src/store/projectLock.ts`, `src/store/gridStore.ts`, `src/store/projectManager.ts`, `src/store/__tests__/projectLock.test.ts`, `src/store/__tests__/projectLifecycle.test.ts`, `src/ui/__tests__/persistenceUi.test.ts` | APPLIED |
+| `PATCH-06` | 2026-11-27 | PR #1 code review | `openspec/specs/interactive-pixel-grid/spec.md`, `openspec/changes/project-persistence/specs/interactive-pixel-grid/spec.md`, `src/store/projectFile.ts`, `src/store/projectLock.ts`, `src/store/autosave.ts`, `src/store/gridStore.ts`, `src/store/__tests__/projectFile.test.ts`, `src/store/__tests__/projectLock.test.ts`, `src/store/__tests__/autosave.test.ts`, `src/store/__tests__/projectLifecycle.test.ts`, `src/store/__tests__/support.ts` | APPLIED |
 
 No defect was found in Change 1 or Change 2 implementation; their suites remain
 unchanged by this patch. The only removed behaviour is the superseded
@@ -327,4 +328,150 @@ unchanged by this patch. The only removed behaviour is the superseded
   - Build: `tsc --noEmit` clean, **355 modules transformed**,
     `dist/assets/index-BaDyDauy.js` 539.20 kB, `✓ built in 284ms`; worker still
     emitted separately (`pipeline.worker-C01QtuUB.js`, 46.50 kB).
+- **Status**: APPLIED
+
+### [PATCH-06] PR #1 review hardening: spec drift, PNG decode guard, lock-loss detection, autosave and status nits
+- **Date**: 2026-11-27 15:19:54 UTC
+- **Feedback Source**: Code Review (`openspec-pr-review` of https://github.com/slowbutfast/rgb-pencil/pull/1)
+- **Feedback Summary**:
+  Overview: PR #1 was reviewed against the change artifacts and `verification.md` (tests assumed passing). No Critical findings. Three Important defects and three nits, all inside `project-persistence`; one structural nit (`gridStore.ts` size) is explicitly out of scope.
+  Itemized:
+  1. **[Important · Spec / Invariant Mismatch]** `openspec/specs/interactive-pixel-grid/spec.md` still says completed cells persist in `localStorage` keyed by a fingerprint; the implementation uses IndexedDB projects (localStorage is read once for legacy adoption). The change declared the supersession in prose only and never carried a MODIFIED requirement.
+  2. **[Important · Edge Case / Robustness]** Import decodes the PNG before checking its real dimensions, so a small, highly compressible PNG declaring e.g. `30000×30000` passes the 8 MB cap and can exhaust memory in `createImageBitmap` / canvas.
+  3. **[Important · Logic Bug]** The previous lock owner learns it lost the lock only from the `lock-taken` BroadcastChannel message. The `AbortError` that the browser raises on the original `locks.request` when a steal is granted is swallowed, so with no channel (or a lost message) two tabs stay writable.
+  4. **[Minor · Edge Case]** `flush()` forces `dirty = true`, so every tab-hide or `pagehide` rewrites the record and bumps `updatedAt` even with nothing changed (reorders the "newest first" list; can cause false "Reload project" banners in the no-Web-Locks fallback).
+  5. **[Minor · Logic Bug]** A read-only tab's save returns `{ ok: true }`, so the status reads `Saved` although nothing was written.
+  6. **[Minor · Edge Case]** `sourceHash` in an imported file is accepted as any string; it is stored and indexed.
+  Category/severity: items 1–3 Important, 4–6 Minor.
+  Blast radius: `projectLock.ts`, `projectFile.ts`, `autosave.ts`, one branch of `gridStore.ts#persistCurrent`, one main-spec requirement.
+- **Reported Issue / Raw Trace**:
+  - `openspec/specs/interactive-pixel-grid/spec.md:61-62`: "Completed cell coordinates SHALL persist in `localStorage` keyed by a deterministic fingerprint of the active image and grid width…"
+  - `src/store/imageCodec.ts:133-141` and `src/store/projectFile.ts:270-284`: `codec.decode(png)` runs before the decoded/declared dimensions are compared to the 1024 px cap.
+  - `src/store/projectLock.ts:160-179`, `:184-194`: `void Promise.resolve(request).catch(() => { decided.resolve(false); })` ignores a post-grant `AbortError`; `onLost` is only called from the `lock-taken` channel handler.
+  - `src/store/autosave.ts:114-122`: `if (force || !dirty) dirty = true; dirty = true;`
+  - `src/store/gridStore.ts:569-577`: `if (state.readOnly || …) { return { ok: true }; }`
+  - `src/store/projectFile.ts:229-231`: `typeof parsed.sourceHash !== 'string'` is the only check.
+- **Root Cause**:
+  1. Persistence was changed by a later change without a delta spec (planning gap), and the sync copied the older text.
+  2. Validation order: claimed dimensions are checked, but the claim is not tied to the PNG header before the expensive decode.
+  3. Ownership loss is modelled as a channel event only; the Web Locks abort signal is ignored.
+  4. `flush(force)` ignores its `force` argument and always dirties the state, so lifecycle hooks cannot be a no-op.
+  5. The skipped-save path reuses the success outcome.
+  6. No format constraint on a stored/indexed field.
+- **Target Files**: `openspec/specs/interactive-pixel-grid/spec.md`, `openspec/changes/project-persistence/specs/interactive-pixel-grid/spec.md` (new MODIFIED delta), `src/store/projectFile.ts`, `src/store/projectLock.ts`, `src/store/autosave.ts`, `src/store/gridStore.ts`, `src/store/__tests__/projectFile.test.ts`, `src/store/__tests__/projectLock.test.ts`, `src/store/__tests__/autosave.test.ts`, `src/store/__tests__/projectLifecycle.test.ts`
+- **Resolution Strategy**:
+  - Spec: add a MODIFIED delta for "Local persistence of completed cell progress" and apply the identical text to the main spec; keep the reload scenario and add a legacy-adoption scenario.
+  - PNG guard: before `codec.decode`, read the IHDR width/height (bytes 16–23 of the PNG, big-endian) after checking the 8-byte PNG signature; require them to equal the declared `bitmap.width/height` and be `<= MAX_BITMAP_EDGE`; reject otherwise with the existing message wording.
+  - Lock loss: attach rejection handling to the granted `locks.request` so an `AbortError` after grant sets `readOnly = true`, clears `activeHold`, and calls `onLost` at most once (shared guard with the channel path). Preserve PATCH-05 steal semantics.
+  - Autosave: honour `force`; a non-forced `flush()` with nothing dirty and nothing running resolves without writing.
+  - Status: add `skipped?: boolean` to `SaveOutcome`; `persistCurrent` returns `{ ok: true, skipped: true }` only for the `state.readOnly` case; `write()` leaves the status unchanged for skipped outcomes.
+  - `sourceHash`: accept only `/^[0-9a-f]{1,8}$/`.
+- **Regression Tests** (new):
+  - `projectFile.test.ts`: oversized-IHDR PNG rejected and `codec.decode` not called; IHDR mismatching declared size rejected; non-PNG signature rejected; `sourceHash` of `"zz"`/`""`/9 chars rejected, 8 hex accepted.
+  - `projectLock.test.ts`: with `channel: null`, a steal by another opener flips the previous handle to read-only and invokes `onLost` exactly once; with a channel, abort plus `lock-taken` still invokes `onLost` exactly once.
+  - `autosave.test.ts`: `visibilitychange`/`pagehide` with nothing dirty performs zero saves; with a pending change performs one; `flush(true)` still writes when clean.
+  - `projectLifecycle.test.ts`: read-only store flush does not change `saveStatus` to `saved` and writes nothing.
+- **Verification Commands**:
+  ```bash
+  npm test -- src/store/__tests__/projectFile.test.ts -t "IHDR|sourceHash"
+  npm test -- src/store/__tests__/projectLock.test.ts -t "revoked|onLost"
+  npm test -- src/store/__tests__/autosave.test.ts -t "nothing is dirty|force"
+  npm test -- src/store/__tests__/projectLifecycle.test.ts -t "read-only"
+  SAFE_TEST_MAX_MEM_KB=67108864 safe-test npm test -- --maxWorkers=1
+  SAFE_TEST_MAX_MEM_KB=67108864 safe-test npm run build
+  openspec validate project-persistence --strict
+  ```
+- **Resolution**:
+  - **Spec drift**: added `specs/interactive-pixel-grid/spec.md` to the change as a
+    `## MODIFIED Requirements` delta for "Local persistence of completed cell
+    progress" and replaced the same block in `openspec/specs/interactive-pixel-grid/spec.md`
+    (the file now ends with the updated requirement; the reload scenario is kept
+    and the legacy `rgb-pencil:v1:<hash>` adoption scenario is added). Legacy
+    `localStorage` is now documented as read-once and never written.
+  - **PNG decode guard**: `projectFile.ts` gained a local `readPngIhdr()` helper
+    that verifies the 8-byte PNG signature, requires `IHDR` to be the first
+    chunk, and reads width/height from bytes 16–23 big-endian. `parseProjectFile`
+    now rejects, **before `codec.decode`**, a non-PNG header, an IHDR longest
+    edge above `MAX_BITMAP_EDGE`, or IHDR dimensions that disagree with the
+    declared `bitmap.width/height`. `imageCodec.ts` was not touched.
+  - **`sourceHash`**: after the existing type check, values must match
+    `/^[0-9a-f]{1,8}$/`; otherwise the import fails with "Project source hash is
+    invalid." (the missing/non-string message is unchanged).
+  - **Lock loss**: `projectLock.ts` now attaches rejection handling to the
+    granted `locks.request`; a post-grant `AbortError` (a steal was granted to
+    another tab) sets `readOnly = true`, clears `activeHold`, and calls `onLost`
+    at most once through a shared `lostNotified` guard also used by the
+    `lock-taken` channel handler. The `ifAvailable` denial path, the PATCH-05
+    no-cutoff steal wait, the held stolen lock, and the flush-then-read-only
+    order in `gridStore.acquireForProject` are unchanged. `release()` never
+    triggers `onLost`.
+  - **Autosave**: `SaveOutcome` gained `skipped?: boolean`. `flush(force = false)`
+    now returns without writing when `!force && !dirty && !running`; while a
+    write is in flight it returns the chain and only queues a follow-up when
+    forced or newly dirty. `schedule()`/`flush(true)` still write. `write()`
+    leaves the status unchanged for `{ ok: true, skipped: true }`.
+  - **Read-only status**: `gridStore.persistCurrent` returns
+    `{ ok: true, skipped: true }` only for `state.readOnly`; a no-project /
+    suppressed / missing-image skip keeps `{ ok: true }`.
+- **Existing-test and helper changes (recorded per the handoff)**:
+  - `autosave.test.ts` › "serialises overlapping writes and lets the latest
+    state win": the **first** call changed from `scheduler.flush()` to
+    `scheduler.flush(true)`. The old assertion depended on the removed
+    always-write-on-clean behaviour; no serialisation assertion changed.
+  - `support.ts` (test helper, outside the target map — explicit deviation):
+    the lossless test codec's fake payload now starts with the real 8-byte PNG
+    signature and a 33-byte IHDR chunk (big-endian dimensions) before the raw
+    RGBA. This is required for the new header guard to validate the existing
+    export/import fixtures; **no test assertion changed** and every suite that
+    uses the codec still round-trips bit-exactly. The `[png-size]` log for
+    512×384 therefore changes from 786,440 to 786,465 fake bytes.
+  - No other existing test was modified.
+- **Regression Tests Added**:
+  - `projectFile.test.ts`: "rejects a PNG whose IHDR declares dimensions beyond
+    the cap without decoding" (30000×30000 header, decode spy never called);
+    "rejects an IHDR that disagrees with the declared bitmap size"; "rejects a
+    non-PNG signature at the IHDR guard"; "sourceHash must be 1-8 hex
+    characters" (`""`, `"zz"`, 9 chars rejected; `deadbeef` accepted).
+  - `projectLock.test.ts`: "goes read-only and calls onLost when a steal
+    revoked the lock with no channel" (new fake `RevokingLocks` rejects the
+    previous owner's granted request with `AbortError`); "calls onLost exactly
+    once when abort and lock-taken both arrive".
+  - `autosave.test.ts`: "does not write on visibility or pagehide when nothing
+    is dirty"; "flushes a pending change on pagehide exactly once without
+    force"; "flush(true) forces a write when clean".
+  - `projectLifecycle.test.ts`: "read-only flush leaves saveStatus unchanged and
+    writes nothing" (`put` spy not called; status stays `idle`).
+- **Verification Proof**:
+  - Reproducing runs **before** the fix:
+    - `projectFile.test.ts -t "IHDR|sourceHash"`: **4 failed | 8 skipped (12)**
+      (guard absent; `""` accepted).
+    - `projectLock.test.ts -t "revoked|onLost"`: **1 failed | 1 passed | 6
+      skipped (8)** (`first.readOnly` stayed `false`; the once-only case was
+      already green via the channel).
+    - `autosave.test.ts -t "nothing is dirty|force"`: **2 failed | 1 passed | 7
+      skipped (10)** (2 writes for clean pagehides; 2 writes for a double
+      pagehide; `flush(true)` guard green).
+    - `projectLifecycle.test.ts -t "read-only"`: **1 failed | 14 skipped (15)**
+      (`saveStatus` became `saved`, expected `idle`).
+  - Reproducing runs **after** the fix: **projectFile 4 passed (8 skipped)**,
+    **projectLock 2 passed (6 skipped)**, **autosave 3 passed (7 skipped)**,
+    **projectLifecycle 1 passed (14 skipped)**.
+  - Touched suites together: **4 files / 46 tests passed** (before the restored
+    in-memory export test was re-added the run was 45; the final projectFile
+    file has 13 tests, projectLock 8, autosave 10, lifecycle 15).
+  - Full suite:
+    ```text
+    Test Files  18 passed (18)
+         Tests  220 passed (220)
+      Duration  36.61s
+    ```
+    (210 prior tests + 10 new; no test removed.)
+  - Build:
+    ```text
+    ✓ 355 modules transformed.
+    dist/assets/pipeline.worker-C01QtuUB.js   46.50 kB
+    dist/assets/index-UUKzI0-F.js            540.01 kB │ gzip: 215.86 kB
+    ✓ built in 343ms
+    ```
+  - `openspec validate project-persistence --strict`: **Change 'project-persistence' is valid**.
 - **Status**: APPLIED

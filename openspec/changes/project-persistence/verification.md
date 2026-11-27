@@ -464,3 +464,46 @@ automated gate is **18 files / 210 tests passed** plus a clean build.
 **Known limitations (unchanged)**: project-list counts can be stale while the
 Settings popover stays open; a failed recompute during project open can leave
 mixed in-memory settings.
+
+---
+
+## 11. PATCH-06 — PR #1 review hardening
+
+Applied 2026-11-27; uncommitted on `feat/multi-20261126-2351`.
+
+| Review item | Resolution | Verifying evidence |
+| :--- | :--- | :--- |
+| Important 1 — main spec still describes `localStorage` persistence | Added a `## MODIFIED Requirements` delta (`specs/interactive-pixel-grid/spec.md`) and applied the identical "Local persistence of completed cell progress" block to `openspec/specs/interactive-pixel-grid/spec.md` (IndexedDB project + read-once legacy adoption) | `openspec validate project-persistence --strict` → valid; block diffed identical in both files |
+| Important 2 — PNG decoded before the real dimensions are checked | `projectFile.readPngIhdr()` validates the PNG signature and first IHDR chunk (bytes 16–23, big-endian) and requires equality with the declared bitmap plus `<= 1024` **before** `codec.decode`; `imageCodec.ts` untouched | `projectFile.test.ts` › IHDR oversize (decode spy never called), IHDR mismatch, non-PNG signature |
+| Important 3 — lock loss only detected through BroadcastChannel | Granted `locks.request` rejection now calls a shared `notifyLost()` (read-only, clear hold, `onLost` once); `release()` never notifies; PATCH-05 steal wait/hold unchanged | `projectLock.test.ts` › "goes read-only and calls onLost when a steal revoked the lock with no channel"; "calls onLost exactly once when abort and lock-taken both arrive" |
+| Minor 4 — clean lifecycle flushes rewrite the record | `flush(force = false)` no-ops when `!force && !dirty && !running`; a running chain queues only when forced/newly dirty; `flush(true)` still always writes | `autosave.test.ts` › clean visibility/pagehide zero writes; pending pagehide exactly once; `flush(true)` when clean |
+| Minor 5 — read-only save reports `Saved` | `persistCurrent` returns `{ ok: true, skipped: true }` for `state.readOnly`; `write()` keeps the status for skipped outcomes | `projectLifecycle.test.ts` › "read-only flush leaves saveStatus unchanged and writes nothing" |
+| Minor 6 — unconstrained `sourceHash` | Import requires `/^[0-9a-f]{1,8}$/` | `projectFile.test.ts` › "sourceHash must be 1-8 hex characters" |
+
+**TDD evidence**: the four `-t` reproduction commands failed before the fix
+(projectFile 4 failed, projectLock 1 failed + 1 channel guard passed, autosave
+2 failed + 1 `flush(true)` guard passed, lifecycle 1 failed with `saveStatus`
+`idle` → `saved`) and all pass after.
+
+**Final gate**
+
+```text
+Test Files  18 passed (18)
+     Tests  220 passed (220)
+  Duration  36.61s
+
+✓ 355 modules transformed.
+dist/assets/pipeline.worker-C01QtuUB.js   46.50 kB
+dist/assets/index-UUKzI0-F.js            540.01 kB │ gzip: 215.86 kB
+✓ built in 343ms
+
+Change 'project-persistence' is valid
+```
+
+210 prior tests + 10 new regression tests; no test or record was removed.
+
+**Recorded deviation**: `src/store/__tests__/support.ts` (test helper, outside
+the patch's target map) now emits a real PNG signature + IHDR chunk in its fake
+payload so the header guard can validate existing export/import fixtures. No
+assertion changed; bit-exact round trips still pass. The fake 512×384 PNG size
+log moves from 786,440 to 786,465 bytes.
