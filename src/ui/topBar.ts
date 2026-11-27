@@ -284,6 +284,24 @@ export function mountTopBar(
     if (hoverCapable) setMenuOpen(false);
   };
 
+  const onDocumentPointerDown = (event: PointerEvent): void => {
+    if (!menuOpen) return;
+    const target = event.target;
+    if (target instanceof Node && viewModeMenu.contains(target)) return;
+    // Never consume the press: it must still reach the element that was hit.
+    setMenuOpen(false);
+  };
+
+  const onViewModeMenuFocusOut = (event: FocusEvent): void => {
+    if (!menuOpen) return;
+    const next = event.relatedTarget;
+    // Safari does not focus buttons on click, so a null destination means the
+    // option press itself is still in flight; closing here would swallow it.
+    if (next === null) return;
+    if (next instanceof Node && viewModeMenu.contains(next)) return;
+    setMenuOpen(false);
+  };
+
   const onHoverCapabilityChange = (event: MediaQueryListEvent): void => {
     hoverCapable = event.matches;
     if (!hoverCapable) setMenuOpen(false);
@@ -320,8 +338,10 @@ export function mountTopBar(
     if (!mode) return;
     store.setViewMode(mode);
     setMenuOpen(false);
-    // Mouse users must not leave the trigger focused: Space would activate it.
-    viewModeTrigger.blur();
+    // Pointer users must not leave the trigger focused (Space would activate
+    // it); keyboard users should land back on the trigger per the menu pattern.
+    if (event.detail === 0) viewModeTrigger.focus();
+    else viewModeTrigger.blur();
   };
 
   // --- Focus pill -----------------------------------------------------------
@@ -459,7 +479,11 @@ export function mountTopBar(
     const showFocusBar = state.viewMode === 'squint' && !state.squintPeek;
     focusBar.hidden = !showFocusBar;
     if (showFocusBar) {
-      focusInput.value = String(state.blurCells);
+      // The DOM value is the drag source of truth until the coalesced frame
+      // commits; an unrelated render must not snap the thumb back.
+      if (pendingBlurFrame === null) {
+        focusInput.value = String(state.blurCells);
+      }
       focusInput.setAttribute(
         'aria-valuetext',
         `${Number(state.blurCells.toFixed(2))} cells`,
@@ -555,10 +579,12 @@ export function mountTopBar(
   viewModeMenu.addEventListener('mouseleave', onViewModeMenuLeave);
   viewModeTrigger.addEventListener('keydown', onViewModeTriggerKeyDown);
   viewModeDropdown.addEventListener('keydown', onViewModeDropdownKeyDown);
+  viewModeMenu.addEventListener('focusout', onViewModeMenuFocusOut);
   viewModeOptions.forEach((option) =>
     option.addEventListener('click', onViewModeOptionClick),
   );
   focusInput.addEventListener('input', onFocusInput);
+  document.addEventListener('pointerdown', onDocumentPointerDown, true);
   if (hoverQuery) {
     if (typeof hoverQuery.addEventListener === 'function') {
       hoverQuery.addEventListener('change', onHoverCapabilityChange);
@@ -587,10 +613,12 @@ export function mountTopBar(
     viewModeMenu.removeEventListener('mouseleave', onViewModeMenuLeave);
     viewModeTrigger.removeEventListener('keydown', onViewModeTriggerKeyDown);
     viewModeDropdown.removeEventListener('keydown', onViewModeDropdownKeyDown);
+    viewModeMenu.removeEventListener('focusout', onViewModeMenuFocusOut);
     viewModeOptions.forEach((option) =>
       option.removeEventListener('click', onViewModeOptionClick),
     );
     focusInput.removeEventListener('input', onFocusInput);
+    document.removeEventListener('pointerdown', onDocumentPointerDown, true);
     if (hoverQuery) {
       if (typeof hoverQuery.removeEventListener === 'function') {
         hoverQuery.removeEventListener('change', onHoverCapabilityChange);

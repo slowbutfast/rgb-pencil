@@ -27,3 +27,12 @@
 
 - [x] 5.1 Run full regression test suite (`npm test`) and production build (`npm run build`), verifying all unit and UI tests pass with zero TypeScript or bundle errors
 - [x] 5.2 Populate `verification.md` with the Requirement Adherence Audit Matrix, resolved assumptions, manual visual verification (desktop `1280×800` animated dropdown + Squint preview + Spacebar peek after `Reset` click, and mobile `390×844` single-row pill), and verbatim execution logs
+
+## Patch 01: PR #2 review follow-up (view menu close behaviour)
+
+- [x] P01.1 Scaffold and run reproducing tests in `src/ui/__tests__/ui.test.ts` (outside press, inside press, focus-out with and without a destination, keyboard-selection focus, no swallowed press, slider value with a pending frame) and confirm they fail
+- [x] P01.2 Add the outside-`pointerdown` close, the `focusout` close (non-null outside `relatedTarget` only), and keyboard-selection focus return in `src/ui/topBar.ts`, with listener cleanup in dispose
+- [x] P01.3 Guard the `focusInput.value` write while `pendingBlurFrame !== null` in `src/ui/topBar.ts`
+- [x] P01.4 Add the new scenarios to the MODIFIED requirement in `specs/interactive-pixel-grid/spec.md` and apply identical text to `openspec/specs/interactive-pixel-grid/spec.md`
+- [x] P01.5 Verify reproduction tests pass; run full regression suite, build, spec validation, and a Chromium check at `390×844` (tap trigger, tap canvas)
+- [x] P01.6 Update `tests.md`, `verification.md`, and mark PATCH-01 resolved in `patch.md`

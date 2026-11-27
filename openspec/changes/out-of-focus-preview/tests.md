@@ -14,7 +14,8 @@
   - **Dropdown, Focus Slider & Spacebar Peek UI (`src/ui/__tests__/ui.test.ts`, fake `matchMedia`)**:
     - Verifies the top-right pill renders a single `[data-ui="view-mode-trigger"]` button and a fixed-order 3-item `role="menuitemradio"` dropdown with synchronized `aria-expanded` and `aria-checked`, and that the existing Stripes-render and Settings outside-click assertions still pass through the new controls.
     - Verifies hover opens/closes without click-toggle conflict only when `(hover: hover) and (pointer: fine)` matches, a `matchMedia` `change` event re-evaluates it, tap toggles otherwise, ArrowUp/ArrowDown roves focus, `Escape` closes and returns focus to the trigger, and pointer selection blurs the trigger.
-    - Verifies `[data-ui="focus-bar"]` is visible only when `viewMode === 'squint'`, exposes `aria-valuetext` like `0.75 cells`, and 10 `input` events inside one frame yield one render with the last value.
+    - Verifies the open menu also closes on an outside `pointerdown` without consuming the press (tap-opened and click-opened with hover), stays open for presses inside the menu, closes when keyboard focus moves outside, and ignores a `focusout` with no destination element (Safari press safety); keyboard selection returns focus to the trigger while pointer selection still blurs it.
+    - Verifies `[data-ui="focus-bar"]` is visible only when `viewMode === 'squint'`, exposes `aria-valuetext` like `0.75 cells`, 10 `input` events inside one frame yield one render with the last value, and an unrelated store commit before the frame does not overwrite the slider's in-flight value.
     - Verifies Spacebar peek ignores `e.repeat`, modifier keys, text inputs, selects, and `painting`; never mutates `viewMode`; releases on `keyup`, `window.blur`, and `visibilitychange`; is a no-op in explicit Squint mode.
     - **Activation safety**: after a pointer click on `Reset` (`detail > 0`) the button is blurred, Space engages the peek, both Space events are default-prevented, and `resetCompleted` was called exactly once; with `Reset` focused by keyboard (`detail === 0` click path) Space does not peek and activates the button exactly once; closing Settings moves focus to `document.body`.
     - Verifies `gridCanvas.ts` in Squint: no axes/grid lines/hover ring, `default` cursor, click and drag leave completed cells unchanged, inspector still updates on hover, `Mark Done / Undo` renders disabled and inert, nothing is drawn (and nothing throws) when `grid` is `null`, `imageSmoothingEnabled = false` at `blurCells === 0`, and completed-cell changes do not re-run raster or blur (spy on the engine).
@@ -35,6 +36,9 @@
 - **Mobile Viewport (`390×844`)**:
   - **WHEN** opening the app at `390×844` and tapping `Pixel Grid ▾`
   - **THEN** the single view trigger keeps the top-right pill on a single row without wrapping `Saved`, and the dropdown opens cleanly with `>= 44px` tap targets.
+- **View Menu Outside Dismissal (`390×844` touch and desktop)**:
+  - **WHEN** the dropdown is open and the user taps the canvas (hover unavailable) or presses elsewhere on a desktop
+  - **THEN** the dropdown closes with `aria-expanded="false"` and the same press still reaches its target; on mobile the tap still inspects the cell (`X11, Y6`).
 - **Squint Edge Look**:
   - **WHEN** viewing a scene with a dark border at `1.0` cells
   - **THEN** the edge softens toward paper inside the grid footprint with a clean outer edge (no halo outside), and entering or leaving Squint or peeking never shifts the canvas layout.

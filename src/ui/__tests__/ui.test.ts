@@ -633,6 +633,154 @@ describe('View-mode dropdown', () => {
     expect(viewOptions()[0]!.getAttribute('aria-checked')).toBe('false');
     expect(document.activeElement).not.toBe(trigger);
   });
+
+  it('closes when a pointer press lands outside the menu', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+
+    pointerClick(trigger);
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.dispatchEvent(pointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerType: 'mouse' }));
+
+    expect(dropdown.classList.contains('open')).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('closes a click-opened menu when a pointer press lands outside the menu', async () => {
+    loadShell();
+    installMatchMedia(true);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+
+    pointerClick(trigger);
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    document.body.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerType: 'mouse' }),
+    );
+
+    expect(dropdown.classList.contains('open')).toBe(false);
+  });
+
+  it('keeps the menu open for a press inside the menu', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+
+    pointerClick(trigger);
+    const inside = viewOptions()[1]!;
+    inside.dispatchEvent(pointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerType: 'mouse' }));
+    trigger.dispatchEvent(pointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerType: 'mouse' }));
+
+    expect(dropdown.classList.contains('open')).toBe(true);
+  });
+
+  it('closes when keyboard focus moves outside the menu', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+    trigger.focus();
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    viewOptions()[0]!.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }),
+    );
+
+    expect(dropdown.classList.contains('open')).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('ignores a focus change with no destination element', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+    trigger.focus();
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    viewOptions()[0]!.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+
+    expect(dropdown.classList.contains('open')).toBe(true);
+  });
+
+  it('returns focus to the trigger after keyboard selection and blurs it after pointer selection', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+
+    pointerClick(trigger);
+    const squint = optionFor('Squint');
+    squint.focus();
+    squint.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }));
+    expect(store.getState().viewMode).toBe('squint');
+    expect(document.activeElement).toBe(trigger);
+
+    pointerClick(trigger);
+    trigger.focus();
+    const stripes = optionFor('Stripes');
+    stripes.focus();
+    pointerClick(stripes, 1);
+    expect(store.getState().viewMode).toBe('stripes');
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it('does not swallow the press that lands on another control', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    disposers.push(mountTopBar(document.body, store));
+
+    const trigger = byUi('view-mode-trigger')!;
+    const dropdown = byUi('view-mode-dropdown')!;
+    pointerClick(trigger);
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    const outside = document.createElement('button');
+    const onClick = vi.fn();
+    outside.addEventListener('click', onClick);
+    document.body.appendChild(outside);
+
+    const down = pointerEvent('pointerdown', { clientX: 5, clientY: 5, pointerType: 'mouse' });
+    outside.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+    outside.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(dropdown.classList.contains('open')).toBe(false);
+  });
 });
 
 describe('Focus bar', () => {
@@ -698,6 +846,30 @@ describe('Focus bar', () => {
     frames.flush();
     expect(setBlurCells).toHaveBeenCalledTimes(1);
     expect(setBlurCells).toHaveBeenCalledWith(0.5);
+  });
+
+  it('does not overwrite the slider value while a frame is pending', async () => {
+    loadShell();
+    installMatchMedia(false);
+    const store = await makeStore();
+    const frames = installFrameQueue();
+    disposers.push(mountTopBar(document.body, store));
+    store.setViewMode('squint');
+
+    const input = byUi<HTMLInputElement>('focus-input')!;
+    expect(input.value).toBe('0.75');
+
+    input.value = '1.05';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(frames.pending()).toBe(1);
+
+    // Any unrelated commit must not snap the thumb back before the frame runs.
+    store.setHovered({ col: 1, row: 1 });
+    expect(input.value).toBe('1.05');
+
+    frames.flush();
+    expect(store.getState().blurCells).toBeCloseTo(1.05, 5);
+    expect(input.value).toBe('1.05');
   });
 });
 

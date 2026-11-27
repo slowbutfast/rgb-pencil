@@ -404,3 +404,41 @@ Captured locally under `.scratch/shots/` (tool output, not committed) and inspec
 - Updated `proposal.md`, `architecture.md`, and task 1.1 to record that PR #1 merged at `0374420` (`master` `d3e2cc5`, identical tree), so this change and its PR target `master` directly.
 - Kept the no-recompute assertion as observable-proxy based (no new context, no `putImageData`) rather than adding a fragile ESM module spy.
 
+## PATCH-01 — PR #2 review follow-up (applied)
+
+Feedback: the view menu never closed on an outside tap or when keyboard focus left it; keyboard selection dropped focus to `body`; and an unrelated render could snap the Focus slider back mid-drag. The optional `opticalBlur.ts` vertical-pass optimisation was explicitly excluded.
+
+### Reproduce (red) then fix
+
+```bash
+npx vitest run src/ui/__tests__/ui.test.ts --maxWorkers=1 -t "outside the menu|focus moves outside|no destination|keyboard selection|swallow|frame is pending"
+```
+
+```text
+ Red:  Tests  6 failed | 1 passed | 37 skipped (44)
+Green: Tests  7 passed | 37 skipped (44)
+```
+
+The red failures were: outside press did not close (tap and click-opened), focus-out did not close, keyboard selection left focus off the trigger, the outside press closed but was not consumed (swallow guard), and the slider value was overwritten (`'0.75'` instead of `'1.05'`) before the frame ran. The inside-press and null-`relatedTarget` guards passed before and after, as intended.
+
+Implementation (in `src/ui/topBar.ts` only, besides tests/spec/docs):
+
+- Capture-phase `document` `pointerdown`: while open, close when the target is outside `[data-ui="view-mode-menu"]`; never `preventDefault`/`stopPropagation`.
+- `focusout` on `viewModeMenu`: close only when `relatedTarget` is a non-null node outside the menu. A `null` destination leaves it open (Safari does not focus buttons on click, so closing would swallow the option press).
+- `onViewModeOptionClick`: `event.detail === 0` focuses the trigger; pointer activation still blurs it.
+- Render: skip the `focusInput.value` write while `pendingBlurFrame !== null`; `aria-valuetext` still updates.
+- Listeners removed in dispose.
+
+### Verification
+
+```text
+Full suite: 19 files / 265 tests passed   (257 baseline + 8 new)
+Build:      ✓ 356 modules transformed; pipeline.worker-C01QtuUB.js separate; ✓ built in 425ms
+Specs:      out-of-focus-preview valid; --specs --strict 13 passed, 0 failed
+```
+
+- Delta and main `interactive-pixel-grid` requirement text was diff-verified identical after adding the sentence and three scenarios; PATCH-06's persistence requirement is untouched.
+- Chromium 390×844 with `(hover: hover) and (pointer: fine)` false: tap trigger → open; tap canvas cell `(10,5)` → menu closed with `aria-expanded="false"` **and** the same tap inspected `X11, Y6` (inspector visible). Desktop 1280×800: outside press closed a click-opened menu. No console errors.
+- Screenshots (`desktop-patch-outside-press.png`, `mobile-patch-outside-tap.png`) were captured under `.scratch/shots/` and inspected; not committed.
+- Guardrails: no engine, store, canvas, inspector, CSS, HTML, dependency, or Space-peek changes.
+
