@@ -1,0 +1,65 @@
+## Automated Tests
+
+- `npm test -- src/store/__tests__/completedCodec.test.ts`: bitset codec:
+  - Encode/decode round trip equals the original set; length is 294 bytes for 56 × 42 and 864 for 96 × 72.
+  - Out-of-range bits are ignored on decode; empty set encodes to all zeros; corner cells (0,0) and (cols−1, rows−1) survive.
+- `npm test -- src/store/__tests__/projectDb.test.ts` (uses `fake-indexeddb`): storage layer:
+  - Create, get, update, list (newest first), rename, and delete remove both metadata and image records.
+  - PNG blob round trip is bit-exact and `runPipeline` yields the same `sourceHash` after restore.
+  - A record with a newer `schemaVersion` is refused and left unmodified.
+  - Open failure, write failure, and `QuotaExceededError` are surfaced as statuses without throwing; the next write retries.
+  - `persist()` is requested once after the first successful save.
+  - Soft assertion: encoded PNG size for a sample 512-px image is reported.
+- `npm test -- src/store/__tests__/autosave.test.ts` (fake timers): autosave:
+  - 40 toggles inside one second produce exactly one save after 500 ms with all 40 cells.
+  - `visibilitychange` to hidden and `pagehide` flush immediately; writes are serialised and the latest state wins.
+  - Status moves `Saving…` → `Saved`, and to a warning on failure.
+- `npm test -- src/store/__tests__/projectLifecycle.test.ts`: resume, list, and lock rules:
+  - Startup opens the last-opened project; with none, the sample scene loads and a project is created on first change.
+  - Opening another project saves the current one first; deleting the open project falls back to the next or the sample.
+  - Same-image upload offers resume/new copy and creates nothing until chosen; start-new-drawing makes a sibling and leaves the original intact.
+  - Names are trimmed, capped at 60 characters, de-duplicated (`tree (2)`), and empty rename is rejected.
+  - Store enforces geometry lock: width/palette changes are refused while `doneCount > 0` and allowed at 0 (after undo or Reset); contrast/dither require confirmation while cells are done and a declined change issues no pipeline request.
+  - Pipeline version mismatch shows a notice and leaves cells unchanged.
+  - Legacy `rgb-pencil:v1:<hash>` cells are adopted once (out-of-range dropped) and the key removed; legacy keys are never written.
+- `npm test -- src/store/__tests__/projectFile.test.ts`: backup file:
+  - Export then import yields identical settings, image bytes, and completed cells under a new id; the original is untouched.
+  - Rejections without storage changes: non-JSON, wrong `format`, newer `version`, `cols` out of range, bitset length mismatch, out-of-range settings, undecodable PNG, bitmap over 1024 px, and file over 8 MB (rejected before parsing).
+  - A name containing markup is stored and rendered as plain text.
+  - Backup nudge appears once at 50 completed cells without export, is suppressed by export or dismissal.
+  - Export works in memory-only mode.
+- `npm test -- src/store/__tests__/projectLock.test.ts` (mock `navigator.locks`): tab safety:
+  - First opener becomes owner; a second opener is read-only with writes disabled and nothing written to storage; inspection still works.
+  - `Take over` swaps ownership and the former owner flushes then goes read-only; the new owner reloads the record.
+  - Closing the owner releases the lock for the next opener.
+  - Without Web Locks, a save whose stored `updatedAt` is newer is skipped and a reload banner is shown (compare and put in one transaction).
+  - `BroadcastChannel` list-changed refreshes other tabs; a project deleted elsewhere switches the open tab and says so.
+- `npm test -- src/ui/__tests__/persistenceUi.test.ts`: UI behaviour:
+  - Save status caption follows the write lifecycle; memory-only warning is persistent; banners are dismissible and do not overlay the grid.
+  - Width and palette controls disabled with caption at `doneCount > 0` and enabled again at 0; contrast confirmation shown and reverted on decline.
+  - Projects list shows rows newest first with correct `done / total`; delete needs confirmation; cancel keeps the project.
+- `npm run build`: strict TypeScript build passes.
+
+## Manual Verification
+
+- **Close and reopen mid-drawing**:
+  - **WHEN** uploading a photo, marking 30 cells done (including a drag-paint), closing the tab, and reopening the app
+  - **THEN** the same image, grid width, palette, contrast, and exactly those 30 cells appear without re-uploading, and the status shows `Saved` before closing.
+- **Settings lock**:
+  - **WHEN** one cell is done and the user tries Grid Width, Palette, then Contrast
+  - **THEN** width and palette are disabled with an explanatory caption, and contrast shows a confirmation that reverts when declined.
+- **Two tabs**:
+  - **WHEN** opening the same project in a second tab, marking a cell there, then pressing `Take over`
+  - **THEN** the second tab is read-only with a banner and cannot mark cells until it takes over, after which the first tab becomes read-only.
+- **Backup and restore**:
+  - **WHEN** exporting a project, deleting it, then importing the file, and importing a corrupted copy of the file
+  - **THEN** the restored project matches the original exactly, and the corrupted file is rejected with a clear message and no new project.
+- **Storage failure**:
+  - **WHEN** opening the app in a mode where IndexedDB is blocked
+  - **THEN** the grid works, a persistent memory-only warning is visible, and Export still produces a file.
+- **Legacy progress**:
+  - **WHEN** a localStorage key `rgb-pencil:v1:<hash>` from the first change exists and the matching image is loaded
+  - **THEN** its cells appear completed once and the legacy key is gone afterwards.
+- **Real device storage**:
+  - **WHEN** using the app on a phone browser for several sessions over days
+  - **THEN** progress persists and `navigator.storage.estimate()` usage is plausible (supports the quota assumption in `research.md`).

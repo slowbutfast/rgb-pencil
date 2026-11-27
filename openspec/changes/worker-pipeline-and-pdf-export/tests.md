@@ -1,0 +1,59 @@
+## Automated Tests
+
+- `npm test -- src/engine/__tests__/engine.test.ts`: LUT and pipeline engine checks:
+  - `buildComboLUT` returns exactly 125 unique `(ri, gi, bi)` entries for each of the 3 preset palettes.
+  - Optical average of `(R Full, G Full, B Solid Black)` has positive `b*` and higher `L*` than any single-channel stripe.
+  - Hand-rolled Lab for all 125 entries agrees with `culori` within 0.5 per component.
+  - `runPipeline` is deterministic with dithering off (identical pixels map to identical states) and preserves mean luminance on a uniform mid-gray patch with dithering on.
+  - `sourceHash` is identical across contrast, dither, and palette changes, and differs across grid width changes.
+  - Widths outside 16–96 return an error response; 16 and 96 succeed.
+  - `MatchedGrid` round-trips through `structuredClone` with typed arrays intact.
+  - Soft timing budget: a 96-wide run completes within a generous bound (reported, not a hard gate).
+- `npm test -- src/engine/__tests__/pipelineClient.test.ts`: client concurrency using a fake worker:
+  - Stale response (`jobId` older than latest) is discarded.
+  - 30 rapid requests while one is in flight produce exactly one further request carrying the 30th parameters.
+  - Worker error keeps the last good grid, surfaces an error state, and the next request uses a freshly created worker.
+  - Missing `Worker` or a throwing constructor falls back to synchronous `runPipeline` and still yields a correct grid.
+  - Loading a new image invalidates in-flight results from the previous image.
+- `npm test -- src/engine/__tests__/guideBuilder.test.ts`: guide builder:
+  - 168 instructions for a 56 × 42 grid with correct `k = 3c + ch` ordering and channel arrays.
+  - Runs expand back to the exact original per-row states (completeness), are ordered, gap-free, and maximal (no equal adjacent states), on a randomised grid.
+  - Uniform column yields one run; white-paper runs are included.
+  - `summariseStates` counts sum to 7,056 for 56 × 42.
+  - `paginateChart` covers every cell, overlaps exactly one line, handles single-tile grids, never exceeds tile size, and throws `RangeError` for tile size < 2.
+  - Repeated calls deep-equal; module imports no DOM, React, or pdf-lib.
+- `npm test -- src/engine/__tests__/pdfExporter.test.ts`: PDF export (Node, no DOM):
+  - Output starts with `%PDF-` and reloads via `PDFDocument.load`.
+  - Page order is legend, chart tiles, checklist, then template when enabled; no template pages when disabled.
+  - Legend lists all five state names with counts matching `summariseStates`.
+  - Chart column labels on a later tile are absolute (e.g. 21–40), and no drawn cell leaves the printable margin for A4 and US Letter.
+  - Checklist has exactly 168 entries for 56 × 42 in order; an artificial 288-run column produces `(cont.)` pages with no lost or duplicated runs.
+  - Template cell width at 6 mm is about 17.01 pt; a 96 × 72 grid at 6 mm on A4 produces more than one template page.
+  - Export succeeds with only standard fonts; a standard-font `encodeText('◐')` is expected to throw, confirming vector symbols are needed.
+  - Generation rejects cleanly on invalid input without partial downloads.
+- `npm test -- src/ui/__tests__/touchAndExport.test.ts`: UI behaviour:
+  - Touch `pointerdown` inspects without changing completed count; touch drag does not paint; double-tap changes nothing.
+  - `Mark Done` toggles to `Undo` and increments the counter; button hidden after a mouse interaction and when no cell is inspected.
+  - Export PDF is disabled with no grid and while a run is pending, shows a busy label while exporting, re-enables and shows a dismissible error on failure, and leaves grid and progress untouched.
+- `npm run build`: TypeScript strict build succeeds and the worker is emitted as a separate chunk.
+
+## Manual Verification
+
+- **Responsiveness during slider scrubbing**:
+  - **WHEN** dragging the Grid Width slider from 16 to 96 while moving the pointer over cells
+  - **THEN** hover highlights and the sidebar keep updating smoothly, the old grid stays until the new one is ready, and the final grid matches the last slider value.
+- **PDF export end to end**:
+  - **WHEN** exporting a PDF from the default sample scene on A4, then with `Include faint template` enabled
+  - **THEN** a file `rgb-pencil-guide-56x42.pdf` downloads, opens in a viewer, shows legend, chart tiles with absolute indices and aligned overlaps, a 168-entry checklist, and (when enabled) template pages with a scale note.
+- **Print scale check**:
+  - **WHEN** printing a template page at 100% / actual size and measuring the 10 mm calibration bar with a ruler
+  - **THEN** it measures 10 mm within 1 mm.
+- **Portrait image**:
+  - **WHEN** loading a tall portrait photo at width 96 and exporting
+  - **THEN** export completes, tiles cover all rows, and any oversize checklist entry continues with `(cont.)`.
+- **Touch (real device or 390 × 844 emulation with touch)**:
+  - **WHEN** tapping and dragging across cells, then pressing `Mark Done` and `Undo`
+  - **THEN** taps and drags only inspect, the button toggles completion, the page does not zoom or scroll, and the button is at least 44 × 44 px and never covers the grid.
+- **Worker fallback**:
+  - **WHEN** loading the app with `Worker` disabled (for example via a console override before load)
+  - **THEN** the grid still renders correctly using the synchronous path.
