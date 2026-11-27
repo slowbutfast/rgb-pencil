@@ -2,10 +2,10 @@
 
 ## Executive Summary
 
-- **Status (this run)**: Phase 1 (TDD test scaffolding) complete. Implementation tasks 2.1–5.2 are intentionally untouched.
+- **Status**: Complete. All 15 tasks are ticked; implementation, TDD tests, spec sync, browser verification, and the pull request are done.
 - **Date**: 2026-11-27
-- **Branch**: `feat/out-of-focus-preview`, based on `master` (`d3e2cc5`, merge of PR #1 whose head was `0374420`). PR #1 is already merged, so the handoff's fallback branch rule applied: this branch targets `master` directly. No commits or pushes were made in this run.
-- **Change artifacts**: `f51a6e7` (`docs(openspec): record planning artifacts and handoff for out-of-focus-preview`).
+- **Branch**: `feat/out-of-focus-preview`, based on `master` (`d3e2cc5`, the merge of PR #1 whose head was `0374420`). PR #1 was already merged when implementation started, so the handoff's fallback applied: this change targets `master` directly. Implementation commit `991c963` is pushed and opened as **PR #2** (https://github.com/slowbutfast/rgb-pencil/pull/2).
+- **Change artifacts**: `f51a6e7` (planning artifacts + handoff), `991c963` (implementation, artifacts, synced specs, this report).
 
 ### Environment
 
