@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#fafafa">
+  <title>RGB Pencil Grid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="shell">
+    <!-- Left Blank Canvas + Centered Grid -->
+    <main class="stage" id="stage" data-ui="stage">
+      <div class="top-bar" data-ui="top-bar">
+        <div class="pill-group">
+          <label class="btn primary" for="fileInput" data-ui="upload-label">Upload Image</label>
+          <input id="fileInput" class="upload-input" type="file" accept="image/*" data-ui="file-input">
+          <div class="divider"></div>
+          <span class="progress-readout" id="progressText" data-ui="progress">0 / 0 done</span>
+          <button class="btn" id="btnClearDone" title="Reset all completed pixels" data-ui="reset">Reset</button>
+        </div>
+
+        <div class="pill-group">
+          <button class="btn active" id="btnModeGrid" title="Contrast-boosted source pixel grid" data-ui="mode-grid">Pixel Grid</button>
+          <button class="btn" id="btnModeStripes" title="Peek at RGB stripes" data-ui="mode-stripes">Stripes</button>
+          <div class="divider"></div>
+          <button class="btn" id="btnSettings" title="Grid &amp; contrast settings" data-ui="settings-trigger">Settings</button>
+        </div>
+      </div>
+
+      <!-- Collapsible Settings Popover -->
+      <div class="settings-popover" id="settingsPopover" data-ui="settings-popover">
+        <div class="setting-row">
+          <div class="setting-head"><span>Sample Scenes</span></div>
+          <div class="sample-row">
+            <button class="sample-chip active" data-scene="tree" data-ui="sample">Tree</button>
+            <button class="sample-chip" data-scene="sunset" data-ui="sample">Sunset</button>
+            <button class="sample-chip" data-scene="orbs" data-ui="sample">Orbs</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Grid Width</span><span id="valCols" data-ui="cols-value">56 px</span></div>
+          <input type="range" id="inputCols" min="16" max="96" step="2" value="56" data-ui="cols-input">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Contrast Boost</span><span id="valContrast" data-ui="contrast-value">1.45×</span></div>
+          <input type="range" id="inputContrast" min="1.0" max="2.3" step="0.05" value="1.45" data-ui="contrast-input">
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-head"><span>Pencil Palette</span></div>
+          <select id="inputPalette" data-ui="palette-input">
+            <option value="reflective" selected>Reflective Colored Pencils</option>
+            <option value="vibrant">Vibrant Wax Pencils</option>
+            <option value="emissive">Ideal Screen RGB</option>
+          </select>
+        </div>
+
+        <label class="toggle-line">
+          <span>Floyd–Steinberg Dithering</span>
+          <input type="checkbox" id="inputDither" checked data-ui="dither-input">
+        </label>
+      </div>
+
+      <div class="grid-frame">
+        <canvas id="gridCanvas" data-ui="grid-canvas"></canvas>
+      </div>
+
+      <div class="corner-hint" id="gridMetaHint" data-ui="grid-meta">56 × 42 grid · Click (or drag) cells to mark done / undo · Drop any image</div>
+    </main>
+
+    <!-- Right Minimalist Inspector Sidebar -->
+    <aside class="inspector-sidebar" data-ui="inspector">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Pixel Inspector</div>
+
+        <div class="empty-state" id="emptyState" data-ui="empty-state">
+          Hover over any cell on the grid to inspect its three RGB stripe values without covering the image.
+        </div>
+
+        <div class="inspector-active" id="inspectorActive" data-ui="inspector-active">
+          <div class="coord-row">
+            <span class="coord-value" id="sideCoord" data-ui="coord">X1, Y1</span>
+            <span class="status-pill" id="sideStatus" data-ui="status">To Do</span>
+          </div>
+
+          <div class="stripe-card">
+            <div class="stripe-preview">
+              <div class="stripe-bar" id="barR" data-ui="bar-r"></div>
+              <div class="stripe-bar" id="barG" data-ui="bar-g"></div>
+              <div class="stripe-bar" id="barB" data-ui="bar-b"></div>
+            </div>
+            <div class="stripe-compare">
+              <span class="swatch-pair">Target <span class="mini-swatch" id="swatchTarget" data-ui="swatch-target"></span></span>
+              <span class="swatch-pair">Mix <span class="mini-swatch" id="swatchMix" data-ui="swatch-mix"></span></span>
+            </div>
+          </div>
+
+          <div class="stripe-list">
+            <div class="stripe-item">
+              <span class="ch-dot R">R</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblR" data-ui="label-r">Full Color</span>
+                <span class="state-sub" id="subR" data-ui="sub-r">● Red Stripe</span>
+              </div>
+            </div>
+            <div class="stripe-item">
+              <span class="ch-dot G">G</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblG" data-ui="label-g">Light Black</span>
+                <span class="state-sub" id="subG" data-ui="sub-g">◐ Green Stripe</span>
+              </div>
+            </div>
+            <div class="stripe-item">
+              <span class="ch-dot B">B</span>
+              <div class="state-meta">
+                <span class="state-label" id="lblB" data-ui="label-b">Solid Black</span>
+                <span class="state-sub" id="subB" data-ui="sub-b">■ Blue Stripe</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="meta-footer">
+            <span id="sideHint" data-ui="hint">Click cell to mark done</span>
+            <span id="sideDelta" data-ui="delta">ΔE 0.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-legend" data-ui="legend">
+        <div class="sidebar-label" style="margin-bottom: 4px;">5 Shading States</div>
+        <div class="legend-line" data-ui="legend-line"><span class="legend-sym">□</span> White Paper (Highlight)</div>
+        <div class="legend-line" data-ui="legend-line"><span class="legend-sym">●</span> Full Color</div>
+        <div class="legend-line" data-ui="legend-line"><span class="legend-sym">◐</span> Color + Light Black</div>
+        <div class="legend-line" data-ui="legend-line"><span class="legend-sym">◑</span> Color + Heavy Black</div>
+        <div class="legend-line" data-ui="legend-line"><span class="legend-sym">■</span> Solid Black</div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

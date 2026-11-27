@@ -1,0 +1,90 @@
+/*
+ * Design tokens — "Minimalist Studio Blank-Canvas".
+ * Every colour, type family, spacing step, radius, and elevation value used by
+ * the application is declared here; component styles consume them by var().
+ */
+:root {
+  /* Surfaces & ink */
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-subtle: #f0f0f0;
+  --surface-active: #ececec;
+  --surface-pill: rgba(255, 255, 255, 0.9);
+  --surface-popover: rgba(255, 255, 255, 0.97);
+  --ink: #171717;
+  --ink-hover: #333333;
+  --on-ink: #ffffff;
+  --ink-muted: #525252;
+  --ink-soft: #737373;
+  --ink-faint: #a3a3a3;
+  --line: #e5e5e5;
+  --line-strong: #d4d4d4;
+
+  /* Darkroom swatch stage */
+  --swatch-stage: #141414;
+  --on-swatch-stage: #d4d4d4;
+
+  /* Completion status */
+  --status-todo-bg: #f3f4f6;
+  --status-todo-text: #525252;
+  --status-done-bg: #dcfce7;
+  --status-done-text: #15803d;
+
+  /* Channel badges — the only pigment hues in the chrome */
+  --ch-red: #dc2626;
+  --ch-green: #16a34a;
+  --ch-blue: #2563eb;
+
+  /* Canvas-drawn ink (read by src/ui/gridCanvas.ts) */
+  --canvas-axis-label: #a3a3a3;
+  --canvas-axis-label-active: #171717;
+  --canvas-tick: #e5e5e5;
+  --canvas-tick-major: #c4c4c4;
+  --canvas-tick-active: #171717;
+  --canvas-grid-line: rgba(255, 255, 255, 0.2);
+  --canvas-grid-line-major: rgba(255, 255, 255, 0.45);
+  --canvas-border: #171717;
+  --canvas-hover-inner: #ffffff;
+  --canvas-hover-outer: #171717;
+  --canvas-hatch: rgba(255, 255, 255, 0.42);
+  --canvas-drop-overlay: rgba(250, 250, 250, 0.94);
+  --swatch-hairline: rgba(255, 255, 255, 0.1);
+  --swatch-border: rgba(255, 255, 255, 0.25);
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Layout */
+  --sidebar-w: 256px;
+  --popover-w: 260px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --touch-min: 44px;
+  --pill-inset-top: 16px;
+  --pill-inset-x: 20px;
+
+  /* Shape */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-full: 9999px;
+
+  /* Elevation & motion */
+  --shadow-pill: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --shadow-popover: 0 12px 36px rgba(0, 0, 0, 0.08);
+  --transition-control: 150ms ease;
+  --transition-stripe: 60ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-control: 0ms;
+    --transition-stripe: 0ms;
+  }
+}
