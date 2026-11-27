@@ -298,6 +298,7 @@ describe('Export PDF button', () => {
 
     const button = document.querySelector<HTMLButtonElement>('[data-ui="export-pdf"]')!;
     expect(store.getState().status).toBe('pending');
+    await vi.waitFor(() => expect(typeof resolveGrid).toBe('function'));
     expect(button.disabled).toBe(true);
     expect(document.querySelector('[data-ui="progress"]')?.textContent).toBe('Updating…');
 
@@ -384,7 +385,7 @@ describe('Pipeline error line', () => {
     expect(line.style.display).toBe('none');
 
     fail = true;
-    await store.setCols(64);
+    await store.setContrast(2.0, { confirmed: true });
     expect(store.getState().status).toBe('error');
     expect(line.hidden).toBe(false);
     expect(line.style.display).not.toBe('none');
@@ -394,13 +395,13 @@ describe('Pipeline error line', () => {
     expect(document.querySelector('[data-ui="progress"]')?.textContent).toBe('1 / 2352 done');
 
     fail = false;
-    await store.setCols(48);
+    await store.setContrast(1.2, { confirmed: true });
     expect(store.getState().status).toBe('idle');
     expect(line.hidden).toBe(true);
     expect(line.style.display).toBe('none');
 
     fail = true;
-    await store.setCols(32);
+    await store.setContrast(1.8, { confirmed: true });
     expect(line.hidden).toBe(false);
     document.querySelector<HTMLElement>('[data-ui="pipeline-error-dismiss"]')!.click();
     expect(line.hidden).toBe(true);
@@ -478,5 +479,28 @@ describe('downloadPdf', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:rgb-pencil');
+  });
+
+  it('stops the synthetic download click from reaching document handlers', () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: () => 'blob:rgb-pencil',
+      configurable: true,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: () => {},
+      configurable: true,
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    const onDocumentClick = vi.fn();
+    document.addEventListener('click', onDocumentClick);
+    downloadPdf(new Uint8Array([1, 2, 3]), 'rgb-pencil-guide-56x42.pdf');
+    document.removeEventListener('click', onDocumentClick);
+
+    expect(onDocumentClick).not.toHaveBeenCalled();
   });
 });

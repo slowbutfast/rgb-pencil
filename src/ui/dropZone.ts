@@ -91,7 +91,7 @@ export function mountDropZone(root: HTMLElement, store: GridStore): () => void {
       root.querySelectorAll<HTMLElement>('[data-ui="sample"]').forEach((chip) => {
         chip.classList.remove('active');
       });
-      void store.loadImage(image);
+      void store.loadImage(image, { name: file.name });
     });
   };
 

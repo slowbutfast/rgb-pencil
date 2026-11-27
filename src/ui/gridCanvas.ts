@@ -105,7 +105,12 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
 
     const stageRect = stage.getBoundingClientRect();
     const maxWidth = Math.max(280, stageRect.width - 72);
-    const maxHeight = Math.max(240, stageRect.height - 124);
+    // Banners sit in the stage flow above the grid; reserve their measured
+    // height (plus a small gap) so the canvas shrinks instead of colliding.
+    const bannerStack = stage.querySelector<HTMLElement>('[data-ui="banner-stack"]');
+    const bannerHeight = bannerStack ? bannerStack.getBoundingClientRect().height : 0;
+    const bannerReserve = bannerHeight > 0 ? bannerHeight + 12 : 0;
+    const maxHeight = Math.max(240, stageRect.height - 124 - bannerReserve);
     const cellByWidth = Math.floor((maxWidth - AXIS_PAD_LEFT) / grid.cols);
     const cellByHeight = Math.floor((maxHeight - AXIS_PAD_TOP) / grid.rows);
     cellSize = Math.max(4, Math.min(28, cellByWidth, cellByHeight));
@@ -317,7 +322,7 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
       store.setHovered(null);
       return;
     }
-    if (pointerDown && type !== 'touch') {
+    if (pointerDown && type !== 'touch' && !state.readOnly) {
       const key = cellKey(hit.col, hit.row);
       if (state.completedCells.has(key) !== dragPaintDone) {
         store.paintCell(hit.col, hit.row, dragPaintDone);
@@ -333,8 +338,8 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     const hit = cellFromPointer(event);
     if (!hit) return;
 
-    if (type === 'touch') {
-      // Touch inspects only; completion is the inspector's Mark Done button.
+    if (type === 'touch' || state.readOnly) {
+      // Touch inspects only; read-only tabs ignore completion entirely.
       pointerDown = false;
       store.setHovered(hit);
       return;

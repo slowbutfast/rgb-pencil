@@ -86,9 +86,6 @@ const throwingStorage: StorageLike = {
   getItem() {
     throw new Error('SecurityError: storage denied');
   },
-  setItem() {
-    throw new Error('SecurityError: storage denied');
-  },
   removeItem() {
     throw new Error('SecurityError: storage denied');
   },
@@ -154,11 +151,10 @@ describe('createGridStore', () => {
     store.resetCompleted();
 
     expect(store.getState().completedCells.size).toBe(0);
-    const values = storage.keys().map((key) => storage.getItem(key));
-    expect(values).toContain(JSON.stringify([]));
+    expect(storage.keys()).toHaveLength(0);
   });
 
-  it('prunes out-of-bounds completions when the grid width shrinks', async () => {
+  it('refuses a width change while cells are done and allows it after Reset', async () => {
     const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
     await store.loadImage(image(320, 240));
 
@@ -166,12 +162,16 @@ describe('createGridStore', () => {
     store.toggleCell(10, 5);
     expect(store.getState().completedCells.size).toBe(2);
 
-    await store.setCols(16);
+    await expect(store.setCols(16)).resolves.toMatchObject({ ok: false, reason: 'locked' });
+    expect(store.getState().grid?.cols).toBe(56);
+    expect(store.getState().completedCells.size).toBe(2);
+
+    store.resetCompleted();
+    await expect(store.setCols(16)).resolves.toMatchObject({ ok: true });
     const state = store.getState();
     expect(state.grid?.cols).toBe(16);
     expect(state.grid?.rows).toBe(12);
-    expect(state.completedCells.has('55,41')).toBe(false);
-    expect(state.completedCells.has('10,5')).toBe(true);
+    expect(state.completedCells.size).toBe(0);
   });
 
   it('unsubscribes cleanly', async () => {
@@ -186,22 +186,15 @@ describe('createGridStore', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('persists completions under the rgb-pencil:v1 fingerprint key and restores them', async () => {
+  it('never writes the superseded rgb-pencil:v1 localStorage keys', async () => {
     const storage = new MemoryStorage();
-    const first = createGridStore({ client: fakeClient(), storage });
-    await first.loadImage(image(320, 240));
-    first.toggleCell(4, 4);
-    first.toggleCell(5, 6);
-    first.toggleCell(7, 8);
+    const store = createGridStore({ client: fakeClient(), storage });
+    await store.loadImage(image(320, 240));
+    store.toggleCell(4, 4);
+    store.toggleCell(5, 6);
+    await store.flushNow();
 
-    const keys = storage.keys();
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^rgb-pencil:v1:/);
-
-    const second = createGridStore({ client: fakeClient(), storage });
-    await second.loadImage(image(320, 240));
-
-    expect([...second.getState().completedCells].sort()).toEqual(['4,4', '5,6', '7,8']);
+    expect(storage.keys()).toHaveLength(0);
   });
 
   it('falls back to in-memory progress when localStorage throws', async () => {

@@ -125,17 +125,20 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
     subB.textContent = `${stateB.symbol} Blue Stripe`;
 
     const touch = state.lastPointerType === 'touch';
-    hint.textContent = touch
-      ? done
-        ? 'Press Undo to clear this cell'
-        : 'Press Mark Done to complete'
-      : done
-        ? 'Click cell to undo'
-        : 'Click cell to mark done';
+    hint.textContent = state.readOnly
+      ? 'Viewing only — another tab owns this project'
+      : touch
+        ? done
+          ? 'Press Undo to clear this cell'
+          : 'Press Mark Done to complete'
+        : done
+          ? 'Click cell to undo'
+          : 'Click cell to mark done';
     delta.textContent = `ΔE ${cell.deltaE.toFixed(1)}`;
 
-    setMarkDoneVisible(touch);
-    markDone.textContent = done ? 'Undo' : 'Mark Done';
+    setMarkDoneVisible(touch || state.readOnly);
+    markDone.disabled = state.readOnly;
+    markDone.textContent = state.readOnly ? 'Read-only' : done ? 'Undo' : 'Mark Done';
   }
 
   const onMarkDone = (): void => {
