@@ -129,19 +129,21 @@ export function mountInspectorSidebar(root: HTMLElement, store: GridStore): () =
     const touch = state.lastPointerType === 'touch';
     hint.textContent = squinting
       ? 'Squint preview — clicks inspect only'
-      : state.readOnly
-        ? 'Viewing only — another tab owns this project'
-        : touch
-          ? done
-            ? 'Press Undo to clear this cell'
-            : 'Press Mark Done to complete'
-          : done
-            ? 'Click cell to undo'
-            : 'Click cell to mark done';
+      : state.filtersActive
+        ? 'Experimental filters — clicks inspect only'
+        : state.readOnly
+          ? 'Viewing only — another tab owns this project'
+          : touch
+            ? done
+              ? 'Press Undo to clear this cell'
+              : 'Press Mark Done to complete'
+            : done
+              ? 'Click cell to undo'
+              : 'Click cell to mark done';
     delta.textContent = `ΔE ${cell.deltaE.toFixed(1)}`;
 
     setMarkDoneVisible(touch || state.readOnly);
-    markDone.disabled = state.readOnly || squinting;
+    markDone.disabled = state.readOnly || squinting || state.filtersActive;
     markDone.textContent = state.readOnly ? 'Read-only' : done ? 'Undo' : 'Mark Done';
   }
 

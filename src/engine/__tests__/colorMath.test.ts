@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildComboLUT,
+  deltaE2000,
+  labToLinearRgb,
   linearRgbToLab,
   linearToSrgb,
   srgbToLinear,
@@ -120,5 +122,74 @@ describe('buildComboLUT', () => {
     expect(yellow.lab[0]).toBeGreaterThan(redOnly.lab[0]);
     expect(yellow.lab[0]).toBeGreaterThan(greenOnly.lab[0]);
     expect(yellow.lab[0]).toBeGreaterThan(blueOnly.lab[0]);
+  });
+});
+
+/** Small deterministic PRNG so the round-trip sample is reproducible. */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+}
+
+describe('CIEDE2000', () => {
+  // Sharma, Wu, Dalal (2005) supplementary reference pairs.
+  const pairs: Array<[readonly [number, number, number], readonly [number, number, number], number]> = [
+    [[50, 2.6772, -79.7751], [50, 0, -82.7485], 2.0425],
+    [[50, 3.1571, -77.2803], [50, 0, -82.7485], 2.8615],
+    [[50, 2.8361, -74.02], [50, 0, -82.7485], 3.4412],
+    [[50, -1.3802, -84.2814], [50, 0, -82.7485], 1.0],
+    [[50, 2.5, 0], [50, 0, -2.5], 4.3065],
+    [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644],
+  ];
+
+  it.each(pairs)('matches the published pair %j -> %j', (a, b, expected) => {
+    expect(deltaE2000(a, b)).toBeCloseTo(expected, 4);
+    expect(deltaE2000(b, a)).toBeCloseTo(expected, 4);
+  });
+
+  it('is symmetric to 1e-9 on random pairs', () => {
+    const random = seeded(0x5eed);
+    for (let i = 0; i < 200; i += 1) {
+      const a = [random() * 100, random() * 200 - 100, random() * 200 - 100] as const;
+      const b = [random() * 100, random() * 200 - 100, random() * 200 - 100] as const;
+      expect(Math.abs(deltaE2000(a, b) - deltaE2000(b, a))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('is zero for identical colours', () => {
+    expect(deltaE2000([55, 12, -7], [55, 12, -7])).toBe(0);
+  });
+});
+
+describe('labToLinearRgb', () => {
+  it('inverts linearRgbToLab within 1e-4 per channel on random in-gamut colours', () => {
+    const random = seeded(0xc0ffee);
+    for (let i = 0; i < 1_000; i += 1) {
+      const r = random();
+      const g = random();
+      const b = random();
+      const lab = linearRgbToLab(r, g, b);
+      const [rr, gg, bb] = labToLinearRgb(lab[0], lab[1], lab[2]);
+      expect(Math.abs(rr - r)).toBeLessThan(1e-4);
+      expect(Math.abs(gg - g)).toBeLessThan(1e-4);
+      expect(Math.abs(bb - b)).toBeLessThan(1e-4);
+    }
+  });
+
+  it('maps white and black back to their linear endpoints', () => {
+    const white = linearRgbToLab(1, 1, 1);
+    const [wr, wg, wb] = labToLinearRgb(white[0], white[1], white[2]);
+    expect(wr).toBeCloseTo(1, 6);
+    expect(wg).toBeCloseTo(1, 6);
+    expect(wb).toBeCloseTo(1, 6);
+
+    const black = linearRgbToLab(0, 0, 0);
+    const [br, bg, bb] = labToLinearRgb(black[0], black[1], black[2]);
+    expect(br).toBeCloseTo(0, 9);
+    expect(bg).toBeCloseTo(0, 9);
+    expect(bb).toBeCloseTo(0, 9);
   });
 });

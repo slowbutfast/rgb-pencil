@@ -1,7 +1,14 @@
 import { renderSampleScene, SAMPLE_SCENE_NAMES, type SampleSceneName } from '../engine/sampleScenes';
 import type { GridStore, GridStoreState } from '../store/gridStore';
 import type { ProjectSummary } from '../store/projectDb';
-import type { PageSize, PaletteKey } from '../types/pipeline';
+import {
+  FILTER_PRESETS,
+  isDefaultFilters,
+  presetKeyForFilters,
+  type MatchMetric,
+  type PageSize,
+  type PaletteKey,
+} from '../types/pipeline';
 import { readImageElement } from './dropZone';
 
 function element<T extends HTMLElement>(root: HTMLElement, name: string): T {
@@ -194,6 +201,134 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
   cellRow.append(cellHead, cellInput);
 
   popover.append(pageSizeRow, templateRow, cellRow);
+
+  // --- Experimental colour filters -----------------------------------------
+  const filtersSection = document.createElement('details');
+  filtersSection.className = 'filters-section';
+  filtersSection.dataset.ui = 'filters-section';
+
+  const filtersSummary = document.createElement('summary');
+  filtersSummary.className = 'filters-summary';
+  const filtersEyebrow = document.createElement('span');
+  filtersEyebrow.className = 'filters-eyebrow';
+  filtersEyebrow.textContent = 'Color filters (experimental)';
+  const filtersPresetName = document.createElement('span');
+  filtersPresetName.className = 'filters-preset-name';
+  filtersPresetName.dataset.ui = 'filters-preset-summary';
+  filtersPresetName.textContent = 'None (baseline)';
+  filtersSummary.append(filtersEyebrow, filtersPresetName);
+  filtersSection.appendChild(filtersSummary);
+
+  function filterSelectRow(
+    labelText: string,
+    ui: string,
+  ): { row: HTMLDivElement; select: HTMLSelectElement } {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    const head = document.createElement('div');
+    head.className = 'setting-head';
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    head.appendChild(label);
+    const select = document.createElement('select');
+    select.dataset.ui = ui;
+    row.append(head, select);
+    return { row, select };
+  }
+
+  function filterRangeRow(
+    labelText: string,
+    ui: string,
+    min: number,
+    max: number,
+    step: number,
+  ): { row: HTMLDivElement; input: HTMLInputElement; value: HTMLSpanElement } {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    const head = document.createElement('div');
+    head.className = 'setting-head';
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    const value = document.createElement('span');
+    value.dataset.ui = `${ui}-value`;
+    head.append(label, value);
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.dataset.ui = ui;
+    row.append(head, input);
+    return { row, input, value };
+  }
+
+  const presetRow = filterSelectRow('Preset', 'filters-preset');
+  for (const preset of FILTER_PRESETS) {
+    const option = document.createElement('option');
+    option.value = preset.key;
+    option.textContent = preset.label;
+    presetRow.select.appendChild(option);
+  }
+  const customOption = document.createElement('option');
+  customOption.value = 'custom';
+  customOption.textContent = 'Custom';
+  presetRow.select.appendChild(customOption);
+
+  const metricRow = filterSelectRow('Match metric', 'filters-metric');
+  for (const [value, label] of [
+    ['de76', 'ΔE76 (current)'],
+    ['de2000', 'CIEDE2000'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    metricRow.select.appendChild(option);
+  }
+
+  const errorRow = filterSelectRow('Error limit', 'filters-error-limit');
+  for (const [value, label] of [
+    ['off', 'Off'],
+    ['0.2', '0.20'],
+    ['0.1', '0.10'],
+    ['0.05', '0.05'],
+    ['0.02', '0.02'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    errorRow.select.appendChild(option);
+  }
+
+  const chromaRow = filterRangeRow('Chroma', 'filters-chroma', 0.5, 1.5, 0.05);
+  const redRow = filterRangeRow('R gain', 'filters-gain-r', 0.6, 1.4, 0.01);
+  const greenRow = filterRangeRow('G gain', 'filters-gain-g', 0.6, 1.4, 0.01);
+  const blueRow = filterRangeRow('B gain', 'filters-gain-b', 0.6, 1.4, 0.01);
+  const blackRow = filterRangeRow('Black point', 'filters-black-point', 0, 40, 1);
+
+  const resetFiltersButton = document.createElement('button');
+  resetFiltersButton.type = 'button';
+  resetFiltersButton.className = 'btn filters-reset';
+  resetFiltersButton.dataset.ui = 'filters-reset';
+  resetFiltersButton.textContent = 'Reset filters';
+
+  const filtersLockCaption = document.createElement('div');
+  filtersLockCaption.className = 'filters-caption';
+  filtersLockCaption.dataset.ui = 'filters-lock-caption';
+  filtersLockCaption.hidden = true;
+
+  filtersSection.append(
+    presetRow.row,
+    metricRow.row,
+    errorRow.row,
+    chromaRow.row,
+    redRow.row,
+    greenRow.row,
+    blueRow.row,
+    blackRow.row,
+    resetFiltersButton,
+    filtersLockCaption,
+  );
+  popover.appendChild(filtersSection);
 
   // --- Local UI state -------------------------------------------------------
   let renamingId: string | null = null;
@@ -442,8 +577,91 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     cellInput.value = String(state.exportOptions.templateCellMm);
     cellValue.textContent = `${state.exportOptions.templateCellMm} mm`;
 
+    const filters = state.filters;
+    const presetKey = presetKeyForFilters(filters);
+    presetRow.select.value = presetKey;
+    const activePreset = FILTER_PRESETS.find((preset) => preset.key === presetKey);
+    filtersPresetName.textContent = activePreset ? activePreset.label : 'Custom';
+
+    metricRow.select.value = filters.metric;
+    errorRow.select.value = filters.errorLimit === null ? 'off' : String(filters.errorLimit);
+    chromaRow.input.value = String(filters.chromaScale);
+    chromaRow.value.textContent = filters.chromaScale.toFixed(2);
+    redRow.input.value = String(filters.gains[0]);
+    redRow.value.textContent = filters.gains[0].toFixed(2);
+    greenRow.input.value = String(filters.gains[1]);
+    greenRow.value.textContent = filters.gains[1].toFixed(2);
+    blueRow.input.value = String(filters.gains[2]);
+    blueRow.value.textContent = filters.gains[2].toFixed(2);
+    blackRow.input.value = String(filters.blackPoint);
+    blackRow.value.textContent = String(filters.blackPoint);
+
+    const filtersLocked = doneCount > 0;
+    for (const control of [
+      presetRow.select,
+      metricRow.select,
+      errorRow.select,
+      chromaRow.input,
+      redRow.input,
+      greenRow.input,
+      blueRow.input,
+      blackRow.input,
+    ]) {
+      control.disabled = filtersLocked;
+    }
+    resetFiltersButton.disabled = filtersLocked || isDefaultFilters(filters);
+    filtersLockCaption.hidden = !filtersLocked;
+    filtersLockCaption.textContent = filtersLocked
+      ? 'Filters are locked while cells are done; undo all cells to change them.'
+      : '';
+
     renderProjects(state);
   }
+
+  const onFiltersPreset = (): void => {
+    const preset = FILTER_PRESETS.find((candidate) => candidate.key === presetRow.select.value);
+    if (!preset) return;
+    void store.setFilters(preset.filters);
+  };
+
+  const onFiltersMetric = (): void => {
+    void store.setFilters({ metric: metricRow.select.value as MatchMetric });
+  };
+
+  const onFiltersErrorLimit = (): void => {
+    const value = errorRow.select.value;
+    void store.setFilters({ errorLimit: value === 'off' ? null : Number(value) });
+  };
+
+  const onFiltersChroma = (): void => {
+    void store.setFilters({ chromaScale: Number(chromaRow.input.value) });
+  };
+
+  const onFiltersRed = (): void => {
+    const gains = [...store.getState().filters.gains] as [number, number, number];
+    gains[0] = Number(redRow.input.value);
+    void store.setFilters({ gains });
+  };
+
+  const onFiltersGreen = (): void => {
+    const gains = [...store.getState().filters.gains] as [number, number, number];
+    gains[1] = Number(greenRow.input.value);
+    void store.setFilters({ gains });
+  };
+
+  const onFiltersBlue = (): void => {
+    const gains = [...store.getState().filters.gains] as [number, number, number];
+    gains[2] = Number(blueRow.input.value);
+    void store.setFilters({ gains });
+  };
+
+  const onFiltersBlackPoint = (): void => {
+    void store.setFilters({ blackPoint: Number(blackRow.input.value) });
+  };
+
+  const onFiltersReset = (): void => {
+    void store.resetFilters();
+  };
 
   const onTrigger = (event: MouseEvent): void => {
     event.stopPropagation();
@@ -585,6 +803,15 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
   importInput.addEventListener('change', onImportProject);
   startNew.addEventListener('click', onStartNew);
   projectStatusDismiss.addEventListener('click', onDismissStatus);
+  presetRow.select.addEventListener('change', onFiltersPreset);
+  metricRow.select.addEventListener('change', onFiltersMetric);
+  errorRow.select.addEventListener('change', onFiltersErrorLimit);
+  chromaRow.input.addEventListener('input', onFiltersChroma);
+  redRow.input.addEventListener('input', onFiltersRed);
+  greenRow.input.addEventListener('input', onFiltersGreen);
+  blueRow.input.addEventListener('input', onFiltersBlue);
+  blackRow.input.addEventListener('input', onFiltersBlackPoint);
+  resetFiltersButton.addEventListener('click', onFiltersReset);
 
   const unsubscribe = store.subscribe(render);
   render(store.getState());
@@ -606,6 +833,15 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     importInput.removeEventListener('change', onImportProject);
     startNew.removeEventListener('click', onStartNew);
     projectStatusDismiss.removeEventListener('click', onDismissStatus);
+    presetRow.select.removeEventListener('change', onFiltersPreset);
+    metricRow.select.removeEventListener('change', onFiltersMetric);
+    errorRow.select.removeEventListener('change', onFiltersErrorLimit);
+    chromaRow.input.removeEventListener('input', onFiltersChroma);
+    redRow.input.removeEventListener('input', onFiltersRed);
+    greenRow.input.removeEventListener('input', onFiltersGreen);
+    blueRow.input.removeEventListener('input', onFiltersBlue);
+    blackRow.input.removeEventListener('input', onFiltersBlackPoint);
+    resetFiltersButton.removeEventListener('click', onFiltersReset);
     revokeUrls();
     projectsSection.remove();
     lockCaption.remove();
@@ -613,6 +849,7 @@ export function mountSettingsPopover(root: HTMLElement, store: GridStore): () =>
     pageSizeRow.remove();
     templateRow.remove();
     cellRow.remove();
+    filtersSection.remove();
     sampleHandlers.forEach(({ chip, handler }) => chip.removeEventListener('click', handler));
   };
 }

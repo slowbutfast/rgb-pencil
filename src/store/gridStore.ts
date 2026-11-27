@@ -3,6 +3,7 @@ import { prepareWorkingBitmap } from '../engine/workingBitmap';
 import {
   DEFAULT_BLUR_CELLS,
   DEFAULT_EXPORT_OPTIONS,
+  DEFAULT_FILTERS,
   DEFAULT_SETTINGS,
   MAX_BLUR_CELLS,
   MAX_COLS,
@@ -13,8 +14,11 @@ import {
   MIN_CONTRAST,
   MIN_TEMPLATE_MM,
   cellKey,
+  cloneFilters,
+  isDefaultFilters,
   parseCellKey,
   type CellCoord,
+  type ColorFilters,
   type EngineClient,
   type ExportOptions,
   type MatchedGrid,
@@ -79,7 +83,8 @@ export type BannerId =
   | 'pipeline-version'
   | 'reload'
   | 'notice'
-  | 'save-error';
+  | 'save-error'
+  | 'filters';
 
 export interface GridBanner {
   id: BannerId;
@@ -113,6 +118,10 @@ export interface GridStoreOptions {
 
 export interface GridStoreState {
   settings: PipelineSettings;
+  /** Transient experimental filters; never persisted. */
+  filters: ColorFilters;
+  /** True while any filter differs from its default. */
+  filtersActive: boolean;
   grid: MatchedGrid | null;
   viewMode: ViewMode;
   /** Transient Focus-slider radius in logical cells; never persisted. */
@@ -168,6 +177,8 @@ export interface GridStore {
   setContrast(contrast: number, options?: { confirmed?: boolean }): Promise<ActionResult>;
   setPalette(palette: PaletteKey): Promise<ActionResult>;
   setDither(dither: boolean, options?: { confirmed?: boolean }): Promise<ActionResult>;
+  setFilters(patch: Partial<ColorFilters>): Promise<ActionResult>;
+  resetFilters(): Promise<ActionResult>;
   setViewMode(mode: ViewMode): void;
   setBlurCells(cells: number): void;
   setSquintPeek(active: boolean): void;
@@ -230,6 +241,8 @@ const BACKUP_BANNER =
 const PIPELINE_BANNER =
   'This project was started with a different matching version; colours may differ slightly.';
 const RELOAD_BANNER = 'This project was changed in another tab. Reload to see the latest.';
+const FILTERS_BANNER =
+  'Experimental colour filters are on: preview only. Marking cells and PDF export are disabled; filters reset on reload.';
 
 function backupMetaKey(projectId: string): string {
   return `backup-suppressed:${projectId}`;
@@ -243,6 +256,15 @@ export function selectEffectiveMode(
   state: Pick<GridStoreState, 'viewMode' | 'squintPeek'>,
 ): ViewMode {
   return state.squintPeek ? 'squint' : state.viewMode;
+}
+
+/** One selector for "any experimental filter is active". */
+export function selectFiltersActive(state: Pick<GridStoreState, 'filters'>): boolean {
+  return !isDefaultFilters(state.filters);
+}
+
+function filterFields(filters: ColorFilters): Pick<GridStoreState, 'filters' | 'filtersActive'> {
+  return { filters, filtersActive: !isDefaultFilters(filters) };
 }
 
 /** Framework-free observable store for grid state, projects, and persistence. */
@@ -281,6 +303,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
 
   let state: GridStoreState = {
     settings: { ...DEFAULT_SETTINGS },
+    ...filterFields(cloneFilters(DEFAULT_FILTERS)),
     grid: null,
     viewMode: 'grid',
     blurCells: DEFAULT_BLUR_CELLS,
@@ -330,6 +353,9 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     }
     if (reloadPrompt && !isDismissed('reload')) {
       banners.push({ id: 'reload', text: RELOAD_BANNER });
+    }
+    if (state.filtersActive && !isDismissed('filters')) {
+      banners.push({ id: 'filters', text: FILTERS_BANNER });
     }
     if (noticeText && !isDismissed('notice')) {
       banners.push({ id: 'notice', text: noticeText });
@@ -428,7 +454,11 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     const token = ++jobToken;
     commit({ status: 'pending', latestJobId: token, error: null });
     try {
-      const result = await client.process({ image: source, settings: { ...state.settings } });
+      const result = await client.process({
+        image: source,
+        settings: { ...state.settings },
+        filters: cloneFilters(state.filters),
+      });
       if (token !== jobToken || !source) return false;
       const grid = result.grid;
       const completed = sanitizeCompleted(state.completedCells, grid);
@@ -670,6 +700,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
 
     commit({
       settings,
+      ...filterFields(cloneFilters(DEFAULT_FILTERS)),
       completedCells: new Set<string>(),
       projectId: id,
       projectName: loaded.project.name,
@@ -714,6 +745,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     commit({
       projectId: null,
       projectName: null,
+      ...filterFields(cloneFilters(DEFAULT_FILTERS)),
       completedCells: new Set<string>(),
       readOnly: false,
       sameImageOffer: null,
@@ -763,6 +795,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     client.invalidate?.();
     resetProjectFlags();
     commit({
+      ...filterFields(cloneFilters(DEFAULT_FILTERS)),
       completedCells: new Set<string>(),
       projectId: null,
       projectName: null,
@@ -890,6 +923,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
         commit({
           projectId: null,
           projectName: null,
+          ...filterFields(cloneFilters(DEFAULT_FILTERS)),
           completedCells: new Set<string>(),
           readOnly: false,
           sameImageOffer: null,
@@ -916,7 +950,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
       const originalName = projectName ?? pendingName ?? FALLBACK_PROJECT_NAME;
 
       const settings = { ...DEFAULT_SETTINGS };
-      commit({ settings });
+      commit({ settings, ...filterFields(cloneFilters(DEFAULT_FILTERS)) });
       const ready = await recompute();
       if (!ready || !state.grid) return { ok: false, reason: 'error' };
 
@@ -1017,6 +1051,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
         const settings = fromStoredSettings(parsed.project.settings);
         commit({
           settings,
+          ...filterFields(cloneFilters(DEFAULT_FILTERS)),
           projectId: projectId,
           projectName: projectName,
           completedCells: new Set<string>(),
@@ -1140,6 +1175,68 @@ export function createGridStore(options: GridStoreOptions): GridStore {
       return { ok: true };
     },
 
+    async setFilters(patch) {
+      if (state.completedCells.size > 0) return { ok: false, reason: 'locked' };
+      const current = state.filters;
+      const nextGains: [number, number, number] = patch.gains
+        ? [
+            clamp(patch.gains[0]!, 0.6, 1.4),
+            clamp(patch.gains[1]!, 0.6, 1.4),
+            clamp(patch.gains[2]!, 0.6, 1.4),
+          ]
+        : [current.gains[0], current.gains[1], current.gains[2]];
+
+      let errorLimit =
+        patch.errorLimit === undefined ? current.errorLimit : patch.errorLimit;
+      if (errorLimit !== null) {
+        if (!Number.isFinite(errorLimit) || errorLimit < 0.02) errorLimit = 0.02;
+        else if (errorLimit >= 1) errorLimit = null;
+        else if (errorLimit > 0.5) errorLimit = 0.5;
+      }
+
+      const next: ColorFilters = {
+        blackPoint:
+          patch.blackPoint === undefined
+            ? current.blackPoint
+            : clamp(Math.round(patch.blackPoint), 0, 40),
+        gains: nextGains,
+        chromaScale:
+          patch.chromaScale === undefined
+            ? current.chromaScale
+            : clamp(patch.chromaScale, 0.5, 1.5),
+        errorLimit,
+        metric:
+          patch.metric === 'de76' || patch.metric === 'de2000'
+            ? patch.metric
+            : current.metric,
+      };
+
+      const unchanged =
+        next.blackPoint === current.blackPoint &&
+        next.gains[0] === current.gains[0] &&
+        next.gains[1] === current.gains[1] &&
+        next.gains[2] === current.gains[2] &&
+        next.chromaScale === current.chromaScale &&
+        next.errorLimit === current.errorLimit &&
+        next.metric === current.metric;
+      if (unchanged) return { ok: true };
+
+      // A new filter change re-arms the dismissible preview banner.
+      dismissedProject.delete('filters');
+      commit(filterFields(next));
+      await recompute();
+      return { ok: true };
+    },
+
+    async resetFilters() {
+      if (state.completedCells.size > 0) return { ok: false, reason: 'locked' };
+      if (isDefaultFilters(state.filters)) return { ok: true };
+      dismissedProject.delete('filters');
+      commit(filterFields(cloneFilters(DEFAULT_FILTERS)));
+      await recompute();
+      return { ok: true };
+    },
+
     setViewMode(mode) {
       if (mode === state.viewMode) return;
       commit({ viewMode: mode });
@@ -1185,7 +1282,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     },
 
     toggleCell(col, row) {
-      if (state.readOnly || state.sameImageOffer) return;
+      if (state.readOnly || state.sameImageOffer || state.filtersActive) return;
       const grid = state.grid;
       if (!grid) return;
       const coord = { col, row };
@@ -1199,7 +1296,7 @@ export function createGridStore(options: GridStoreOptions): GridStore {
     },
 
     paintCell(col, row, done) {
-      if (state.readOnly || state.sameImageOffer) return;
+      if (state.readOnly || state.sameImageOffer || state.filtersActive) return;
       const grid = state.grid;
       if (!grid) return;
       const coord = { col, row };

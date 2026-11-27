@@ -62,6 +62,113 @@ export function deltaE76Squared(a: Lab, b: Lab): number {
   return dL * dL + da * da + db * db;
 }
 
+const TWENTY_FIVE_TO_SEVEN = Math.pow(25, 7);
+const RADIANS = Math.PI / 180;
+
+function hueAngle(a: number, b: number): number {
+  if (a === 0 && b === 0) return 0;
+  const degrees = Math.atan2(b, a) / RADIANS;
+  return degrees >= 0 ? degrees : degrees + 360;
+}
+
+/**
+ * CIEDE2000 ΔE00 on raw L*a*b* numbers. Exported separately from
+ * `deltaE2000` so the matcher's 125-combo search can scan its flat Lab table
+ * without allocating a tuple per candidate.
+ */
+export function deltaE2000Raw(
+  l1: number,
+  a1: number,
+  b1: number,
+  l2: number,
+  a2: number,
+  b2: number,
+): number {
+  const c1 = Math.hypot(a1, b1);
+  const c2 = Math.hypot(a2, b2);
+  const cBar = (c1 + c2) / 2;
+  const cBar7 = Math.pow(cBar, 7);
+  const g = 0.5 * (1 - Math.sqrt(cBar7 / (cBar7 + TWENTY_FIVE_TO_SEVEN)));
+
+  const a1p = (1 + g) * a1;
+  const a2p = (1 + g) * a2;
+  const c1p = Math.hypot(a1p, b1);
+  const c2p = Math.hypot(a2p, b2);
+  const h1p = hueAngle(a1p, b1);
+  const h2p = hueAngle(a2p, b2);
+
+  const dLp = l2 - l1;
+  const dCp = c2p - c1p;
+  let dhp = 0;
+  if (c1p * c2p !== 0) {
+    dhp = h2p - h1p;
+    if (dhp > 180) dhp -= 360;
+    else if (dhp < -180) dhp += 360;
+  }
+  const dHp = 2 * Math.sqrt(c1p * c2p) * Math.sin((dhp * RADIANS) / 2);
+
+  const lBar = (l1 + l2) / 2;
+  const cBarP = (c1p + c2p) / 2;
+  let hBarP: number;
+  if (c1p * c2p === 0) {
+    hBarP = h1p + h2p;
+  } else if (Math.abs(h1p - h2p) <= 180) {
+    hBarP = (h1p + h2p) / 2;
+  } else if (h1p + h2p < 360) {
+    hBarP = (h1p + h2p + 360) / 2;
+  } else {
+    hBarP = (h1p + h2p - 360) / 2;
+  }
+
+  const t =
+    1 -
+    0.17 * Math.cos((hBarP - 30) * RADIANS) +
+    0.24 * Math.cos(2 * hBarP * RADIANS) +
+    0.32 * Math.cos((3 * hBarP + 6) * RADIANS) -
+    0.2 * Math.cos((4 * hBarP - 63) * RADIANS);
+
+  const dTheta = 30 * Math.exp(-Math.pow((hBarP - 275) / 25, 2));
+  const cBarP7 = Math.pow(cBarP, 7);
+  const rC = 2 * Math.sqrt(cBarP7 / (cBarP7 + TWENTY_FIVE_TO_SEVEN));
+  const lBarDelta = lBar - 50;
+  const sL = 1 + (0.015 * lBarDelta * lBarDelta) / Math.sqrt(20 + lBarDelta * lBarDelta);
+  const sC = 1 + 0.045 * cBarP;
+  const sH = 1 + 0.015 * cBarP * t;
+  const rT = -Math.sin(2 * dTheta * RADIANS) * rC;
+
+  const lTerm = dLp / sL;
+  const cTerm = dCp / sC;
+  const hTerm = dHp / sH;
+  return Math.sqrt(lTerm * lTerm + cTerm * cTerm + hTerm * hTerm + rT * cTerm * hTerm);
+}
+
+/** CIEDE2000 colour difference between two CIELAB colours. */
+export function deltaE2000(a: Lab, b: Lab): number {
+  return deltaE2000Raw(a[0], a[1], a[2], b[0], b[1], b[2]);
+}
+
+/**
+ * Inverse of `linearRgbToLab` (CIE 1976, D65, same primaries). Values outside
+ * the sRGB gamut come back outside `[0, 1]`; callers clamp.
+ */
+export function labToLinearRgb(l: number, a: number, b: number): Rgb {
+  const fy = (l + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const inverse = (t: number): number => {
+    const cube = t * t * t;
+    return cube > 0.008856 ? cube : (t - 16 / 116) / 7.787;
+  };
+  const x = inverse(fx) * 0.95047;
+  const y = inverse(fy);
+  const z = inverse(fz) * 1.08883;
+  return [
+    3.2404542 * x - 1.5371385 * y - 0.4985314 * z,
+    -0.969266 * x + 1.8760108 * y + 0.041556 * z,
+    0.0556434 * x - 0.2040259 * y + 1.0572252 * z,
+  ];
+}
+
 /**
  * Precompute all 125 optical averages (5 x 5 x 5 stripe combinations) for a
  * palette. Each stripe contributes equally to the optical mix; the dark border

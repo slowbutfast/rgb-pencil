@@ -172,7 +172,7 @@ export function mountTopBar(
     for (const banner of state.banners) {
       const line = document.createElement('div');
       line.className = 'banner';
-      line.dataset.ui = `banner-${banner.id}`;
+      line.dataset.ui = banner.id === 'filters' ? 'filters-banner' : `banner-${banner.id}`;
       line.dataset.bannerId = banner.id;
 
       const text = document.createElement('span');
@@ -489,13 +489,15 @@ export function mountTopBar(
         `${Number(state.blurCells.toFixed(2))} cells`,
       );
     }
-    exportButton.disabled = busy || !grid || pending;
+    exportButton.disabled = busy || !grid || pending || state.filtersActive;
     exportButton.textContent = busy ? 'Exporting…' : 'Export PDF';
-    exportButton.title = !grid
-      ? 'Load an image before exporting'
-      : pending
-        ? 'Waiting for the current grid to finish'
-        : 'Export a printable drawing guide';
+    exportButton.title = state.filtersActive
+      ? 'Disabled while experimental colour filters are active'
+      : !grid
+        ? 'Load an image before exporting'
+        : pending
+          ? 'Waiting for the current grid to finish'
+          : 'Export a printable drawing guide';
 
     const showExportError = exportError !== null;
     exportLine.line.hidden = !showExportError;
@@ -546,7 +548,7 @@ export function mountTopBar(
 
   const onExport = async (): Promise<void> => {
     const state = store.getState();
-    if (busy || !state.grid || state.status === 'pending') return;
+    if (busy || !state.grid || state.status === 'pending' || state.filtersActive) return;
 
     busy = true;
     exportError = null;

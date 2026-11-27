@@ -470,3 +470,251 @@ describe('Squint view state', () => {
     store.dispose();
   });
 });
+
+describe('experimental colour filters', () => {
+  /** A fake client with a valid (8 hex digit) source hash for export/import. */
+  function hashClient(): EngineClient {
+    return {
+      async process(request) {
+        const cols = request.settings.cols;
+        const rows = Math.max(8, Math.round(cols * (request.image.height / request.image.width)));
+        const count = cols * rows;
+        const hash = (
+          (Math.imul(cols, 2654435761) ^ request.image.data.length) >>>
+          0
+        ).toString(16).padStart(8, '0');
+        return {
+          grid: {
+            cols,
+            rows,
+            ri: new Uint8Array(count).fill(1),
+            gi: new Uint8Array(count).fill(2),
+            bi: new Uint8Array(count).fill(4),
+            deltaE: new Float32Array(count).fill(4.2),
+            target: new Uint8ClampedArray(count * 3).fill(10),
+            palette: getPalette(request.settings.palette),
+            sourceHash: hash,
+          },
+        };
+      },
+    };
+  }
+
+  it('defaults to identity with no active filter or banner', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await store.loadImage(image(320, 240));
+
+    const state = store.getState();
+    expect(state.filters).toEqual({
+      blackPoint: 0,
+      gains: [1, 1, 1],
+      chromaScale: 1,
+      errorLimit: null,
+      metric: 'de76',
+    });
+    expect(state.filtersActive).toBe(false);
+    expect(state.banners.some((banner) => banner.id === 'filters')).toBe(false);
+  });
+
+  it('applies filters, shows the banner, and re-arms it after dismissal', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await store.loadImage(image(320, 240));
+
+    await expect(store.setFilters({ metric: 'de2000' })).resolves.toEqual({ ok: true });
+    let state = store.getState();
+    expect(state.filtersActive).toBe(true);
+    expect(state.filters.metric).toBe('de2000');
+    expect(state.banners.find((banner) => banner.id === 'filters')?.text).toContain(
+      'preview only',
+    );
+
+    store.dismissBanner('filters');
+    expect(store.getState().banners.some((banner) => banner.id === 'filters')).toBe(false);
+
+    await store.setFilters({ chromaScale: 0.9 });
+    expect(store.getState().banners.some((banner) => banner.id === 'filters')).toBe(true);
+
+    await store.resetFilters();
+    state = store.getState();
+    expect(state.filtersActive).toBe(false);
+    expect(state.banners.some((banner) => banner.id === 'filters')).toBe(false);
+  });
+
+  it('blocks completion while active and locks filters once a cell is done', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await store.loadImage(image(320, 240));
+    await store.setFilters({ blackPoint: 25 });
+
+    store.toggleCell(0, 0);
+    store.paintCell(1, 1, true);
+    expect(store.getState().completedCells.size).toBe(0);
+
+    await store.resetFilters();
+    store.toggleCell(0, 0);
+    expect(store.getState().completedCells.size).toBe(1);
+
+    await expect(store.setFilters({ chromaScale: 0.8 })).resolves.toMatchObject({
+      ok: false,
+      reason: 'locked',
+    });
+    await expect(store.resetFilters()).resolves.toMatchObject({ ok: false, reason: 'locked' });
+
+    store.resetCompleted();
+    await expect(store.setFilters({ chromaScale: 0.8 })).resolves.toMatchObject({ ok: true });
+    expect(store.getState().filters.chromaScale).toBe(0.8);
+  });
+
+  it('starts a reloaded session at the baseline filters', async () => {
+    const first = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await first.loadImage(image(320, 240));
+    await first.setFilters({ metric: 'de2000', chromaScale: 1.25 });
+    expect(first.getState().filtersActive).toBe(true);
+
+    const reloaded = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await reloaded.loadImage(image(320, 240));
+    expect(reloaded.getState().filtersActive).toBe(false);
+    expect(reloaded.getState().filters).toEqual({
+      blackPoint: 0,
+      gains: [1, 1, 1],
+      chromaScale: 1,
+      errorLimit: null,
+      metric: 'de76',
+    });
+  });
+
+  it('resets filters on a new image and when starting a new drawing', async () => {
+    const store = createGridStore({ client: fakeClient(), storage: new MemoryStorage() });
+    await store.loadImage(image(320, 240));
+    await store.setFilters({ metric: 'de2000', chromaScale: 1.2 });
+    expect(store.getState().filtersActive).toBe(true);
+
+    await store.loadImage(image(300, 200, 3), { name: 'second.png' });
+    expect(store.getState().filtersActive).toBe(false);
+    expect(store.getState().filters.metric).toBe('de76');
+
+    await store.setFilters({ errorLimit: 0.1 });
+    await expect(store.startNewDrawingFromImage()).resolves.toMatchObject({ ok: true });
+    expect(store.getState().filtersActive).toBe(false);
+  });
+
+  it('resets filters when switching projects and on import', async () => {
+    const db = new MemoryProjectDatabase();
+    const store = createGridStore({
+      client: hashClient(),
+      db,
+      codec: losslessCodec(),
+      storage: new MemoryStorage(),
+      locks: null,
+      channel: null,
+      debounceMs: 5,
+    });
+
+    await store.loadImage(image(320, 240));
+    store.toggleCell(0, 0);
+    await store.flushNow();
+    const firstId = store.getState().projectId!;
+    store.resetCompleted();
+    await store.flushNow();
+
+    await store.loadImage(image(300, 200, 3), { name: 'second.png' });
+    store.toggleCell(0, 0);
+    await store.flushNow();
+    expect(store.getState().projectId).not.toBe(firstId);
+    store.resetCompleted();
+    await store.flushNow();
+
+    await store.setFilters({ metric: 'de2000' });
+    await expect(store.openProject(firstId)).resolves.toMatchObject({ ok: true });
+    expect(store.getState().filtersActive).toBe(false);
+
+    await store.setFilters({ chromaScale: 0.85 });
+    const exported = await store.exportProject();
+    expect(exported.ok).toBe(true);
+    if (!exported.ok) return;
+    expect(exported.text).not.toContain('"filters"');
+    const imported = await store.importProject({
+      size: exported.text.length,
+      text: async () => exported.text,
+    });
+    expect(imported).toEqual({ ok: true });
+    expect(store.getState().filtersActive).toBe(false);
+  });
+
+  it('never persists filters or changes updatedAt', async () => {
+    const db = new MemoryProjectDatabase();
+    const store = createGridStore({
+      client: fakeClient(),
+      db,
+      codec: losslessCodec(),
+      storage: new MemoryStorage(),
+      locks: null,
+      channel: null,
+      debounceMs: 5,
+    });
+
+    await store.loadImage(image(320, 240));
+    store.toggleCell(0, 0);
+    await store.flushNow();
+    store.resetCompleted();
+    await store.flushNow();
+
+    const id = store.getState().projectId!;
+    const before = await db.get(id);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+
+    const put = vi.spyOn(db, 'put');
+    await store.setFilters({ gains: [1.15, 0.8, 0.85], blackPoint: 25 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(put).not.toHaveBeenCalled();
+
+    const after = await db.get(id);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.project.updatedAt).toBe(before.project.updatedAt);
+    expect(JSON.stringify(after.project)).not.toContain('filters');
+    expect(after.project.settings).toEqual(before.project.settings);
+  });
+
+  it('allows filters in a read-only tab', async () => {
+    const denyLocks: LockManagerLike = {
+      async request(_name, _options, callback) {
+        await callback(null);
+        return undefined;
+      },
+    };
+    const db = new MemoryProjectDatabase();
+    const writable = createGridStore({
+      client: hashClient(),
+      db,
+      codec: losslessCodec(),
+      storage: new MemoryStorage(),
+      locks: null,
+      channel: null,
+      debounceMs: 5,
+    });
+    await writable.loadImage(image(320, 240));
+    writable.toggleCell(0, 0);
+    await writable.flushNow();
+    const id = writable.getState().projectId!;
+    writable.resetCompleted();
+    await writable.flushNow();
+    writable.dispose();
+
+    const store = createGridStore({
+      client: hashClient(),
+      db,
+      codec: losslessCodec(),
+      storage: new MemoryStorage(),
+      locks: denyLocks,
+      channel: null,
+      debounceMs: 5,
+    });
+    await expect(store.openProject(id)).resolves.toMatchObject({ ok: true });
+    expect(store.getState().readOnly).toBe(true);
+    expect(store.getState().completedCells.size).toBe(0);
+
+    await expect(store.setFilters({ metric: 'de2000' })).resolves.toEqual({ ok: true });
+    expect(store.getState().filtersActive).toBe(true);
+  });
+});
