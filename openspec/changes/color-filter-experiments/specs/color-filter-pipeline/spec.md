@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Optional colour filters with identity defaults
-The engine SHALL accept an optional `filters` value of type `ColorFilters` beside `settings`: `{ blackPoint: number, gains: [number, number, number], chromaScale: number, errorLimit: number | null, metric: 'de76' | 'de2000' }`. `DEFAULT_FILTERS` SHALL be `{ blackPoint: 0, gains: [1, 1, 1], chromaScale: 1, errorLimit: null, metric: 'de76' }`. `blackPoint` SHALL be an integer in `[0, 40]`, each gain in `[0.6, 1.4]`, `chromaScale` in `[0.5, 1.5]`, and `errorLimit` either `null` or a number in `[0.02, 0.5]`. Out-of-range or non-finite values SHALL be rejected with a `RangeError`. When `filters` is absent or equal to `DEFAULT_FILTERS`, `matchGrid` SHALL return typed arrays byte-identical to its output before this change.
+The engine SHALL accept an optional `filters` value of type `ColorFilters` beside `settings`: `{ blackPoint: number, gains: [number, number, number], chromaScale: number, errorLimit: number | null, metric: 'de76' | 'de2000' }`. `DEFAULT_FILTERS` SHALL be `{ blackPoint: 0, gains: [1, 1, 1], chromaScale: 1, errorLimit: null, metric: 'de76' }`. `blackPoint` SHALL be an integer in `[0, 40]`, each gain in `[0.6, 1.4]`, `chromaScale` in `[0.5, 1.5]`, and `errorLimit` either `null`, a number in `[0.02, 0.5]`, or a number of `1` or more (which behaves exactly like `null`). Any other out-of-range or non-finite value SHALL be rejected with a `RangeError`. When `filters` is absent or equal to `DEFAULT_FILTERS`, `matchGrid` SHALL return typed arrays byte-identical to its output before this change.
 
 #### Scenario: Default filters reproduce the baseline exactly
 - **WHEN** `matchGrid` runs on each fixture with `filters` omitted and again with `DEFAULT_FILTERS`
