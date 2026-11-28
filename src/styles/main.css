@@ -142,6 +142,13 @@ html, body {
   display: none;
   flex-direction: column;
   gap: 14px;
+  /* The shell is locked to the viewport height, so a tall popover (the open
+     filters section adds about 480px) must scroll inside itself on every
+     viewport, not just on phones; otherwise its lower controls are unreachable. */
+  max-height: calc(100vh - 78px);
+  max-height: calc(100dvh - 78px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .settings-popover.open { display: flex; }
@@ -949,13 +956,5 @@ html, body {
   .filters-section .btn,
   .filters-section input[type="range"] {
     min-height: var(--touch-min);
-  }
-}
-
-@media (max-width: 767px) {
-  /* The experimental filters make the popover taller than a phone viewport. */
-  .settings-popover {
-    max-height: calc(100vh - 76px);
-    overflow-y: auto;
   }
 }
