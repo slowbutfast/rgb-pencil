@@ -142,6 +142,13 @@ html, body {
   display: none;
   flex-direction: column;
   gap: 14px;
+  /* The shell is locked to the viewport height, so a tall popover (the open
+     filters section adds about 480px) must scroll inside itself on every
+     viewport, not just on phones; otherwise its lower controls are unreachable. */
+  max-height: calc(100vh - 78px);
+  max-height: calc(100dvh - 78px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .settings-popover.open { display: flex; }
@@ -892,5 +899,62 @@ html, body {
 
   .focus-input {
     width: 120px;
+  }
+}
+
+/* Experimental colour filters (Settings > details) */
+.filters-section {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.filters-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.filters-summary::-webkit-details-marker { display: none; }
+
+.filters-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.filters-preset-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  text-align: right;
+}
+
+.filters-section[open] .filters-summary { margin-bottom: 10px; }
+
+.filters-section .setting-row { margin-top: 10px; }
+
+.filters-caption {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+.filters-reset {
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 767px) {
+  .filters-section select,
+  .filters-section .btn,
+  .filters-section input[type="range"] {
+    min-height: var(--touch-min);
   }
 }

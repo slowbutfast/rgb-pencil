@@ -17,7 +17,9 @@ export const PIPELINE_VERSION = 1;
  * throws a `RangeError` for anything outside 16–96.
  */
 export function runPipeline(request: PipelineRequest): PipelineResult {
-  return { grid: matchGrid(request.image, request.settings) };
+  return {
+    grid: matchGrid(request.image, request.settings, request.filters),
+  };
 }
 
 /** Buffers the worker transfers instead of cloning. */

@@ -397,12 +397,19 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     store.setLastPointerType(type);
     const hit = cellFromPointer(event);
     const mode = selectEffectiveMode(state);
-    surface.style.cursor = hit && mode !== 'squint' ? 'crosshair' : 'default';
+    surface.style.cursor =
+      hit && mode !== 'squint' && !state.filtersActive ? 'crosshair' : 'default';
     if (!hit) {
       store.setHovered(null);
       return;
     }
-    if (pointerDown && type !== 'touch' && !state.readOnly && mode !== 'squint') {
+    if (
+      pointerDown &&
+      type !== 'touch' &&
+      !state.readOnly &&
+      !state.filtersActive &&
+      mode !== 'squint'
+    ) {
       const key = cellKey(hit.col, hit.row);
       if (state.completedCells.has(key) !== dragPaintDone) {
         store.paintCell(hit.col, hit.row, dragPaintDone);
@@ -419,9 +426,9 @@ export function mountGridCanvas(root: HTMLElement, store: GridStore): () => void
     if (!hit) return;
 
     const mode = selectEffectiveMode(state);
-    if (type === 'touch' || state.readOnly || mode === 'squint') {
-      // Touch inspects only; read-only tabs and the Squint preview ignore
-      // completion entirely.
+    if (type === 'touch' || state.readOnly || state.filtersActive || mode === 'squint') {
+      // Touch inspects only; read-only tabs, filtered previews, and the Squint
+      // preview ignore completion entirely.
       pointerDown = false;
       store.setHovered(hit);
       return;

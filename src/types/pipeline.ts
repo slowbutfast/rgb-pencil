@@ -79,6 +79,131 @@ export const DEFAULT_SETTINGS: PipelineSettings = {
   ditherStrength: 0.85,
 };
 
+/** Colour-difference formula used to pick the nearest stripe combination. */
+export type MatchMetric = 'de76' | 'de2000';
+
+/**
+ * Optional, session-only colour filters applied between contrast and matching.
+ * Every field has an identity value, so `DEFAULT_FILTERS` is the current
+ * behaviour. Never persisted and never part of `PipelineSettings`.
+ */
+export interface ColorFilters {
+  /** 8-bit channel values strictly below this become 0. Integer `0-40`. */
+  blackPoint: number;
+  /** Per-channel multipliers on 8-bit sRGB values, each `0.6-1.4`. */
+  gains: readonly [number, number, number];
+  /** Multiplier on CIELAB `a*`/`b*`, `0.5-1.5`; `L*` is untouched. */
+  chromaScale: number;
+  /** Per-channel linear deviation bound, or `null` for unlimited. */
+  errorLimit: number | null;
+  metric: MatchMetric;
+}
+
+export const DEFAULT_FILTERS: ColorFilters = {
+  blackPoint: 0,
+  gains: [1, 1, 1],
+  chromaScale: 1,
+  errorLimit: null,
+  metric: 'de76',
+};
+
+export const FILTER_BOUNDS = {
+  blackPoint: [0, 40],
+  gain: [0.6, 1.4],
+  chromaScale: [0.5, 1.5],
+  errorLimit: [0.02, 0.5],
+} as const;
+
+export function cloneFilters(filters: ColorFilters): ColorFilters {
+  return { ...filters, gains: [...filters.gains] };
+}
+
+export function isDefaultFilters(filters: ColorFilters | undefined): boolean {
+  if (!filters) return true;
+  return (
+    filters.blackPoint === DEFAULT_FILTERS.blackPoint &&
+    filters.gains[0] === 1 &&
+    filters.gains[1] === 1 &&
+    filters.gains[2] === 1 &&
+    filters.chromaScale === DEFAULT_FILTERS.chromaScale &&
+    filters.errorLimit === DEFAULT_FILTERS.errorLimit &&
+    filters.metric === DEFAULT_FILTERS.metric
+  );
+}
+
+export interface FilterPreset {
+  key: string;
+  label: string;
+  filters: ColorFilters;
+}
+
+/** The presets offered in Settings; `None` is the identity default. */
+export const FILTER_PRESETS: readonly FilterPreset[] = [
+  { key: 'none', label: 'None (baseline)', filters: { ...DEFAULT_FILTERS } },
+  {
+    key: 'warm-bias',
+    label: 'Assessment: warm bias',
+    filters: {
+      blackPoint: 25,
+      gains: [1.15, 0.8, 0.85],
+      chromaScale: 1.2,
+      errorLimit: null,
+      metric: 'de76',
+    },
+  },
+  {
+    key: 'gamut-soft',
+    label: 'Gamut-soft',
+    filters: {
+      blackPoint: 0,
+      gains: [1, 1, 1],
+      chromaScale: 0.85,
+      errorLimit: 0.1,
+      metric: 'de2000',
+    },
+  },
+  {
+    key: 'de2000',
+    label: 'CIEDE2000 only',
+    filters: {
+      blackPoint: 0,
+      gains: [1, 1, 1],
+      chromaScale: 1,
+      errorLimit: null,
+      metric: 'de2000',
+    },
+  },
+  {
+    key: 'error-limit',
+    label: 'Error limit only',
+    filters: {
+      blackPoint: 0,
+      gains: [1, 1, 1],
+      chromaScale: 1,
+      errorLimit: 0.1,
+      metric: 'de76',
+    },
+  },
+];
+
+/** Preset key matching the value exactly, or `custom` for any other value. */
+export function presetKeyForFilters(filters: ColorFilters): string {
+  for (const preset of FILTER_PRESETS) {
+    if (
+      preset.filters.blackPoint === filters.blackPoint &&
+      preset.filters.gains[0] === filters.gains[0] &&
+      preset.filters.gains[1] === filters.gains[1] &&
+      preset.filters.gains[2] === filters.gains[2] &&
+      preset.filters.chromaScale === filters.chromaScale &&
+      preset.filters.errorLimit === filters.errorLimit &&
+      preset.filters.metric === filters.metric
+    ) {
+      return preset.key;
+    }
+  }
+  return 'custom';
+}
+
 /** Raw RGBA pixel buffer extracted from an image or canvas. */
 export interface SourceImage {
   width: number;
@@ -173,6 +298,8 @@ export type PointerType = 'mouse' | 'pen' | 'touch';
 export interface PipelineRequest {
   image: SourceImage;
   settings: PipelineSettings;
+  /** Experimental, session-only filters; omitted or `DEFAULT_FILTERS` is the baseline. */
+  filters?: ColorFilters;
 }
 
 export interface PipelineResult {
